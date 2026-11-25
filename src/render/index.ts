@@ -1427,6 +1427,10 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       probe.frustumCulled = false;
       void renderer.compileAsync(new THREE.Scene().add(probe), camera).then(() => probe.geometry.dispose(), () => probe.geometry.dispose());
       void renderer.compileAsync(ghostPostScene, postCamera).catch(() => undefined);
+      // And what is first drawn in the middle of play, in one frame: rain and snow, a ship at the edge of the
+      // map, the leaves coming down.
+      void renderer.compileAsync(precip.scene, camera).catch(() => undefined);
+      void renderer.compileAsync(new THREE.Scene().add(screenMesh(capMaterial), screenMesh(bareMaterial)), camera).catch(() => undefined);
     },
     gpu() {
       const gl = renderer.getContext();
