@@ -503,6 +503,17 @@ void main(){
       a = max(a, line * 0.5 * max(vParams.x, 0.0) * 1.6);
     }
     oColor = vec4(c * a, a);
+  } else if (vParams.w < -0.5) {
+    // A tractor beam (the UFO, param d = -1): light of its own colour, laid over the page (a strong
+    // tint by day, cover param a) and added to it (bright at night), brightest at its walls' edges
+    // where you look through more of it, fading along its edge value toward its tip. No fade near its source:
+    // it comes straight out of the saucer's hatch. Not graded: it is its own light.
+    float across = abs(vn.z);
+    float wall = smoothstep(0.0, 0.1, across) * (0.8 + 0.6 * (1.0 - across));
+    float k = pow(clamp(1.0 - vEdge, 0.0, 1.0), 1.1) * max(vParams.x, 0.0) * wall;
+    float over = clamp(k * (0.5 - 0.25 * uGlow), 0.0, 0.85);
+    float add = k * (0.2 + 0.95 * uGlow);
+    oColor = vec4(toSrgb(base) * (over + add), over);
   } else {
     // A shaft of light. Seen end on (pointing at you) its walls are edge-on: it fades away there,
     // instead of laying a flat sheet of light over the lighthouse it comes out of.

@@ -38,7 +38,7 @@ import { mischiefOf, type Director } from './director';
 import { ownStage, type Owned } from './owned';
 import { throwerOf } from './thrown.system';
 import type { Thrower } from './thrower';
-import { beamMesh, helpMesh, lightsMesh, poolMesh, SAUCER, saucerMesh, ufoShadowMesh } from './ufo-art';
+import { alienMesh, coneMesh, domeMesh, helpMesh, lightsMesh, motesMesh, poolMesh, rimMesh, ringsMesh, SAUCER, saucerMesh, ufoShadowMesh } from './ufo-art';
 
 export const UFO = {
   /** At most this many at once. */
@@ -57,6 +57,8 @@ export const UFO = {
   /** How high it hovers over the highest roof near it, and how high it comes in and goes out. */
   clear: 1.7,
   high: 8,
+  /** Seconds it spins up and tilts before it zips off. */
+  prep: 0.55,
   /** How far from where it took them it brings them back (cells, at least). */
   elsewhere: 6,
 } as const;
@@ -87,7 +89,12 @@ export interface Saucer {
   leanYaw: number;
   /** The grip in the beam (where the person is held). */
   gy: number;
-  /** Handles: hull, lights (two halves), beam, pool, shadow, balloon. */
+  /** Its velocity on the ground plan (for its tilt), and the way it last came in (for the wobble as it stops). */
+  vx: number;
+  vz: number;
+  ax: number;
+  az: number;
+  /** Handles: hull, dome, pilot, lights (two halves), cone, rings, pool, rim, motes, shadow, balloon. */
   h: InstanceHandle[];
 }
 
@@ -102,6 +109,8 @@ export function ufosOf(stage: LifeStage): Ufos | null {
   return registry.get(stage) ?? null;
 }
 
+/** The pool of light's radius on the ground (the beam's foot, a little wider). */
+const BEAM_POOL = SAUCER.r * 1.0;
 const HIDE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -50, 0, 1];
 const easeOut = (u: number): number => 1 - (1 - u) ** 3;
 const easeInOut = (u: number): number => u * u * (3 - 2 * u);
@@ -169,8 +178,8 @@ function phase(s: Saucer, p: UfoPhase): void {
 }
 
 /** Flies from `from` to `to` over `dur` seconds: fast, then a swoop down and a stop (in), or away rising and speeding up. */
-function fly(s: Saucer, dur: number, arriving: boolean): number {
-  const u = Math.min(1, s.t / dur);
+function fly(s: Saucer, dur: number, arriving: boolean, from = 0): number {
+  const u = Math.max(0, Math.min(1, (s.t - from) / dur));
   const k = arriving ? easeOut(u) : u * u;
   s.x = s.from.x + (s.to.x - s.from.x) * k;
   s.z = s.from.z + (s.to.z - s.from.z) * k;
@@ -192,7 +201,8 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number): b
   const s: Saucer = {
     n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x: over.x, y: Math.max(top, ground) + UFO.clear, z: over.z }, ground,
     person, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0,
-    h: [saucerMesh(), lightsMesh(0), lightsMesh(1), beamMesh(), poolMesh(), ufoShadowMesh(), helpMesh()].map((m) => {
+    vx: 0, vz: 0, ax: 1, az: 0,
+    h: [saucerMesh(), domeMesh(), alienMesh(), lightsMesh(0), lightsMesh(1), coneMesh(), ringsMesh(), poolMesh(), rimMesh(), motesMesh(), ufoShadowMesh(), helpMesh()].map((m) => {
       const h = own.spawnMesh(m, HIDE);
       h.setVisible(false);
       return h;
@@ -206,7 +216,10 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number): b
 /** The whole of one saucer's step. */
 function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
   s.t += dt;
-  s.spin += dt * (s.phase === 'away' || s.phase === 'leave' ? 4 : 1.2);
+  const x0 = s.x, z0 = s.z;
+  // Spinning gently while it hovers; spinning up before it zips off.
+  const going = s.phase === 'away' || s.phase === 'leave';
+  s.spin += dt * (going ? 1.2 + Math.min(1, s.t / UFO.prep) * 9 : 1.2);
   const t = throwerOf(stage);
   const crowd = crowdOf(stage);
   const p = s.person;
@@ -280,7 +293,8 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
     case 'away':
     case 'leave': {
       s.beam = Math.max(0, s.beam - dt * 3);
-      const u = fly(s, UFO.leave, false);
+      // A moment to spin up and tilt, then off.
+      const u = fly(s, UFO.leave, false, UFO.prep);
       if (p && s.aboard && t) t.carry(p, s.x, s.y + 0.1, s.z);
       if (u < 1) break;
       if (s.phase === 'leave' || !p) {
@@ -354,6 +368,17 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
     case 'done':
       break;
   }
+  if (dt > 0) {
+    s.vx = (s.x - x0) / dt;
+    s.vz = (s.z - z0) / dt;
+    if (s.phase === 'in' || s.phase === 'back') {
+      const l = Math.hypot(s.vx, s.vz);
+      if (l > 0.5) {
+        s.ax = s.vx / l;
+        s.az = s.vz / l;
+      }
+    }
+  }
 }
 
 /** Where it brings them back: a walkable spot (a street, a square, the beach) away from where it took them. */
@@ -372,59 +397,122 @@ function dropSpot(crowd: Crowd, s: Saucer): { x: number; y: number; z: number } 
   return null;
 }
 
+const tilted = new Array<number>(16).fill(0);
+const sub = new Array<number>(16).fill(0);
+/** out = a · b (column-major 4×4). */
+function mul(a: number[], b: number[], out: number[]): number[] {
+  for (let c = 0; c < 4; c++) {
+    for (let r = 0; r < 4; r++) {
+      let v = 0;
+      for (let k = 0; k < 4; k++) v += a[k * 4 + r]! * b[c * 4 + k]!;
+      out[c * 4 + r] = v;
+    }
+  }
+  return out;
+}
+/** A turn by `ang` about the level axis (ax, 0, az), after a turn about y by `yaw`, at (x, y, z): into `m`. */
+function placeTilted(m: number[], x: number, y: number, z: number, ax: number, az: number, ang: number, yaw: number): void {
+  const c = Math.cos(ang), sn = Math.sin(ang), cs = Math.cos(yaw), ss = Math.sin(yaw);
+  const r00 = c + ax * ax * (1 - c), r01 = az * sn, r02 = ax * az * (1 - c);
+  const r10 = -az * sn, r11 = c, r12 = ax * sn;
+  const r20 = ax * az * (1 - c), r21 = -ax * sn, r22 = c + az * az * (1 - c);
+  // Tilt · Ry(yaw): the y-turn's columns (cs, 0, −ss) and (ss, 0, cs) taken through the tilt.
+  m[0] = r00 * cs - r20 * ss; m[1] = r01 * cs - r21 * ss; m[2] = r02 * cs - r22 * ss; m[3] = 0;
+  m[4] = r10; m[5] = r11; m[6] = r12; m[7] = 0;
+  m[8] = r00 * ss + r20 * cs; m[9] = r01 * ss + r21 * cs; m[10] = r02 * ss + r22 * cs; m[11] = 0;
+  m[12] = x; m[13] = y; m[14] = z; m[15] = 1;
+}
+
 /** Where things are drawn now. */
 function draw(st: State, s: Saucer): void {
-  const [hull, la, lb, beam, pool, shadow, help] = s.h as [InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle];
+  const [hull, dome, alien, la, lb, cone, rings, pool, rim, motes, shadow, help] = s.h as [InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle];
   const m = st.m;
-  // A wobble as it hovers; tilted into its flight.
-  const moving = s.phase === 'in' || s.phase === 'back' || s.phase === 'away' || s.phase === 'leave';
-  const bob = Math.sin(st.time * 2.6 + s.n) * 0.035;
-  const dx = s.to.x - s.from.x, dz = s.to.z - s.from.z, dl = Math.hypot(dx, dz) || 1;
-  const tilt = moving ? 0.22 : 0.04 * Math.sin(st.time * 1.9 + s.n);
-  const tx = moving ? dz / dl : 1, tz = moving ? -dx / dl : 0;
-  // R = rotation about the axis (tx, 0, tz) by tilt, then about y by the spin.
-  const c = Math.cos(tilt), sn = Math.sin(tilt), cs = Math.cos(s.spin), ss = Math.sin(s.spin);
-  // Tilt matrix columns (axis-angle about a level axis).
-  const r00 = c + tx * tx * (1 - c), r01 = tz * sn, r02 = tx * tz * (1 - c);
-  const r10 = -tz * sn, r11 = c, r12 = tx * sn;
-  const r20 = tx * tz * (1 - c), r21 = -tx * sn, r22 = c + tz * tz * (1 - c);
-  // M = Tilt · Ry(spin): columns.
-  const col = (x: number, z: number): [number, number, number] => [r00 * x + r20 * z, r01 * x + r21 * z, r02 * x + r22 * z];
-  const cx = col(cs, -ss), cz = col(ss, cs);
-  const y = s.y + bob;
-  m[0] = cx[0]; m[1] = cx[1]; m[2] = cx[2]; m[3] = 0;
-  m[4] = r10; m[5] = r11; m[6] = r12; m[7] = 0;
-  m[8] = cz[0]; m[9] = cz[1]; m[10] = cz[2]; m[11] = 0;
-  m[12] = s.x; m[13] = y; m[14] = s.z; m[15] = 1;
   const shown = s.phase !== 'gone' && s.phase !== 'done';
   hull.setVisible(shown);
-  if (shown) hull.setMatrix(m);
-  // The rim's lights chase: the two halves in turn, on twos.
-  const half = Math.floor(st.time * 7) % 2;
+  dome.setVisible(shown);
+  alien.setVisible(shown);
+  // Its tilt: into its flight (banking with its speed); a wobble as it stops; a lean before it zips off.
+  const sp = Math.hypot(s.vx, s.vz);
+  let ax = 1, az = 0, ang = 0;
+  if (sp > 0.3) {
+    ax = s.vz / sp;
+    az = -s.vx / sp;
+    ang = Math.min(0.42, sp * 0.035);
+  }
+  if ((s.phase === 'beam' || s.phase === 'seek' || s.phase === 'drop') && s.t < 1.4) {
+    ax = s.az;
+    az = -s.ax;
+    ang = 0.2 * Math.exp(-3 * s.t) * Math.sin(s.t * 13);
+  }
+  const going = s.phase === 'away' || s.phase === 'leave';
+  if (going && s.t < UFO.prep) {
+    const ox = s.to.x - s.from.x, oz = s.to.z - s.from.z, ol = Math.hypot(ox, oz) || 1;
+    ax = oz / ol;
+    az = -ox / ol;
+    ang = -0.3 * (s.t / UFO.prep);
+  }
+  // A gentle bob while it hovers.
+  const bob = sp < 0.3 ? Math.sin(st.time * 2.4 + s.n) * 0.05 : 0;
+  const y = s.y + bob;
+  placeTilted(m, s.x, y, s.z, ax, az, ang, s.spin);
+  if (shown) {
+    hull.setMatrix(m);
+    dome.setMatrix(m);
+    // The glass: a light tint, so the pilot shows through it.
+    dome.setParams(0.3);
+    // The pilot: sat in the dome, turning to look about; leaning over the dome's edge to peer down while it searches.
+    const peer = s.phase === 'seek' ? Math.min(1, s.t / 0.6) * (s.t > UFO.seek - 0.5 ? Math.max(0, (UFO.seek - s.t) / 0.5) : 1) : 0;
+    const look = s.phase === 'seek' ? s.leanYaw - s.spin : Math.sin(st.time * 0.9 + s.n) * 0.9;
+    const cl = Math.cos(look), sl = Math.sin(look), lean = 0.55 * peer, cle = Math.cos(lean), sle = Math.sin(lean);
+    const out = 0.12 * peer, h0 = SAUCER.under + SAUCER.over + 0.01;
+    // T(out along its look, seat height) · Ry(look) · Rx(lean), on the saucer.
+    sub[0] = cl; sub[1] = 0; sub[2] = -sl; sub[3] = 0;
+    sub[4] = sl * sle; sub[5] = cle; sub[6] = cl * sle; sub[7] = 0;
+    sub[8] = sl * cle; sub[9] = -sle; sub[10] = cl * cle; sub[11] = 0;
+    sub[12] = sl * out; sub[13] = h0 + 0.02 * peer; sub[14] = cl * out; sub[15] = 1;
+    alien.setMatrix(mul(m, sub, tilted));
+  }
+  // The rim's lights chase: the two halves in turn (and the antenna's tip blinks with the first).
+  const half = Math.floor(st.time * 8) % 2;
   la.setVisible(shown && half === 0);
   lb.setVisible(shown && half === 1);
   if (shown) (half === 0 ? la : lb).setMatrix(m);
-  // The beam and its pool of light on the ground.
+  // The beam: the cone, bands of light travelling along it, sparkles rising, the pool and its pulsing rim.
   const on = shown && s.beam > 0.01;
-  beam.setVisible(on);
+  cone.setVisible(on);
+  rings.setVisible(on);
   pool.setVisible(on);
+  rim.setVisible(on);
+  motes.setVisible(on);
   if (on) {
     const len = Math.max(0.2, y - s.ground);
     const lean = s.lean, ly = s.leanYaw;
     const ox = Math.sin(ly) * Math.tan(lean) * len, oz = Math.cos(ly) * Math.tan(lean) * len;
     // The cone from the hatch to the ground (leaning while it searches): its −y axis runs to the foot.
-    beam.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x, y, s.z, 1]);
-    // A pale wash (brighter against the dark at night).
-    const brightness = (st.night ? 0.85 : 0.6) * s.beam;
-    beam.setParams(brightness);
-    const r = SAUCER.r * 0.85;
+    cone.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x, y, s.z, 1]);
+    cone.setParams(1.15 * s.beam, 0, 0, -1);
+    // The bands: up the beam while it lifts somebody, down it while it sets them down (a quarter apart, wrapping).
+    const dir = s.phase === 'drop' ? -1 : 1;
+    const shift = (((st.time * 0.5 * dir) % 0.25) + 0.25) % 0.25;
+    rings.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x + ox * shift, y + len * shift, s.z + oz * shift, 1]);
+    rings.setParams(1.5 * s.beam, 0, 0, -1);
+    // Sparkles rising up it, wrapping.
+    const rise = ((((st.time * 0.4 * dir) % 1) + 1) % 1) * 0.5;
+    motes.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x + ox * rise, y + len * rise, s.z + oz * rise, 1]);
+    motes.setParams(1);
+    const r = BEAM_POOL;
     pool.setMatrix([r, 0, 0, 0, 0, 1, 0, 0, 0, 0, r, 0, s.x + ox, s.ground + 0.02, s.z + oz, 1]);
-    pool.setParams(brightness * 1.1);
+    pool.setParams(1.1 * s.beam, 0, 0, -1);
+    const pulse = r * (1 + 0.1 * Math.sin(st.time * 7));
+    rim.setMatrix([pulse, 0, 0, 0, 0, 1, 0, 0, 0, 0, pulse, 0, s.x + ox, s.ground + 0.025, s.z + oz, 1]);
+    rim.setParams(1.6 * s.beam, 0, 0, -1);
   }
-  // Its shadow on whatever is under it.
-  shadow.setVisible(shown && s.y < UFO.high + 1);
+  // A ring of shadow under it, growing as it comes down.
+  // (Not while the beam is on: its pool of light is there.)
+  shadow.setVisible(shown && s.y < UFO.high + 1 && !on);
   if (shown) {
-    const r = SAUCER.r * 0.7;
+    const above = Math.max(0.5, s.y - s.ground);
+    const r = SAUCER.r * (0.45 + 0.5 * Math.min(1, 2.2 / above));
     shadow.setMatrix([r, 0, 0, 0, 0, 1, 0, 0, 0, 0, r, 0, s.x, s.ground + 0.012, s.z, 1]);
   }
   // "HELP!" over whoever is in the beam, turned to the camera.
