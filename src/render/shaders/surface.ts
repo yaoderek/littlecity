@@ -511,7 +511,7 @@ void main(){
     float across = abs(vn.z);
     float wall = smoothstep(0.0, 0.1, across) * (0.8 + 0.6 * (1.0 - across));
     float k = pow(clamp(1.0 - vEdge, 0.0, 1.0), 1.1) * max(vParams.x, 0.0) * wall;
-    float over = clamp(k * (0.5 - 0.25 * uGlow), 0.0, 0.85);
+    float over = clamp(k * (0.68 - 0.38 * uGlow), 0.0, 0.85);
     float add = k * (0.2 + 0.95 * uGlow);
     oColor = vec4(toSrgb(base) * (over + add), over);
   } else {

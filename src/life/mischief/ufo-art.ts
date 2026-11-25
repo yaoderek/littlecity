@@ -33,7 +33,7 @@ import { balloon, dot, stroke } from '@/parts/people/balloon';
 import { PALETTE } from '@/style/palette';
 
 /** The saucer's size: radius, the hull under and over the rim, the dome, how many lights. The beam's colour. */
-export const SAUCER = { r: 0.92, under: 0.15, over: 0.2, dome: 0.34, lights: 12, beam: '#8dff3c' } as const;
+export const SAUCER = { r: 1.05, under: 0.15, over: 0.2, dome: 0.34, lights: 12, beam: '#8dff3c' } as const;
 
 let saucer: MeshData | null = null;
 export function saucerMesh(): MeshData {
@@ -164,7 +164,7 @@ export function poolMesh(): MeshData {
     const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
     // Facing up (counter-clockwise seen from above).
     b.tri([0, 0, 0], [Math.cos(c), 0, Math.sin(c)], [Math.cos(a), 0, Math.sin(a)], { edge: [0, 0.35, 0.35] });
-    b.quad([Math.cos(a), 0, Math.sin(a)], [Math.cos(c), 0, Math.sin(c)], [Math.cos(c) * 2.4, 0, Math.sin(c) * 2.4], [Math.cos(a) * 2.4, 0, Math.sin(a) * 2.4], { edge: [0.55, 0.55, 1, 1] });
+    b.quad([Math.cos(a), 0, Math.sin(a)], [Math.cos(c), 0, Math.sin(c)], [Math.cos(c) * 3, 0, Math.sin(c) * 3], [Math.cos(a) * 3, 0, Math.sin(a) * 3], { edge: [0.55, 0.55, 1, 1] });
   }
   pool = b.build();
   return pool;
