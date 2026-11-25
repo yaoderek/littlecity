@@ -17,9 +17,11 @@ there are over 80 special buildings and events to find: [the guide](https://litt
 
 ## run it
 
-needs node 22.12 or newer.
+the code is in [yaoderek/littlecity](https://github.com/yaoderek/littlecity), and the built site is served from [yaoderek/littlecity.io](https://github.com/yaoderek/littlecity.io). needs node 22.12 or newer.
 
 ```sh
+git clone https://github.com/yaoderek/littlecity.git
+cd littlecity
 npm install
 npm run dev
 ```
