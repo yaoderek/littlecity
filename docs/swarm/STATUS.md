@@ -1880,3 +1880,25 @@ distance; at most three at once or a queue (agent to choose); cheap to
 draw (the game is live and viral, many weak phones). Also asked: fix the
 flaky Hand e2e test.
 Running: ragdoll agent (UFO).
+
+**UFO merged** (`bbd8b7c`, Opus, `swarm/ragdoll`). A Mischief tool:
+click or tap calls a saucer (up to three at once). In over the map's
+edge in 2.4 s, hovering about 1.7 above the highest roof near its
+catch: the person out of doors nearest the click within 8 cells, else
+anybody (the Hand's rule). A soft yellow-green beam, the person lifted
+turning and kicking over about 3 s under a "HELP!" balloon, hat or load
+dropped, onlookers within 3 cells looking up; in at the hatch (hidden,
+not shrunk); off in 1.6 s; back 20–40 s later at a walkable spot 6+
+cells away, lowered and let go, dizzy 3.5 s, then on their way. Nobody
+about: it sweeps its beam 3.2 s and leaves. A nuke under it flings its
+catch free. Undo and town changes clear it. 7 draw instances a saucer,
+no per-frame allocation; frame cost within the noise. Code:
+`src/life/mischief/ufo*.ts`, catalogue LM03, verb `ufo@x,y,z`. The
+flaky Hand e2e test is fixed (the person held still first). Gate
+(orchestrator, one run): 2,480 passed, 12 skipped, clean; live and
+GitHub both still at `8a28cb1` before publishing. Orchestrator's eye:
+by day the saucer and the HELP! balloon read and it is funny; the beam
+is barely visible; no alien shows in the dome; at night only the dome's
+glow shows (hull and beam lost). Not built: a dog barking, the
+hair-on-end joke. Round 2 sent for the beam, the night look and the
+saucer's presence.
