@@ -1902,3 +1902,24 @@ is barely visible; no alien shows in the dome; at night only the dome's
 glow shows (hull and beam lost). Not built: a dog barking, the
 hair-on-end joke. Round 2 sent for the beam, the night look and the
 saucer's presence.
+
+**UFO round 2 merged** (`788acb4`, Opus). The beam: a "tractor" mode in
+the light-beam pattern of `src/render/shaders/surface.ts` (one branch
+in the translucent pass, taken only when the beam's fourth parameter is
+−1): its own lime colour, a tint by day and added light at night,
+brightest at its edges, no fade near the source; five pieces (cone,
+four bands travelling up or down, sparkles, a pool with a pulsing rim,
+a spill of light). The saucer redrawn bigger (radius 1.05): silver
+upper hull, ribbed underside, a self-lit red rim band, twelve chasing
+coloured lights, an antenna, a see-through dome with a green pilot who
+looks about (and leans over the edge when searching an empty street).
+Flight: banking with speed, a wobble on stopping, a bob, a spin-up
+before leaving; a ring shadow. 12 draw instances a saucer; frame cost
+within the noise. New scenario `ufo-empty`; a test of a town change
+mid-abduction. Gate (orchestrator): 2,483 passed, 12 skipped, clean;
+GitHub and the website both at `f97f01a` before publishing.
+Orchestrator's eye: by day the lime beam, the pool and the lights read
+at once; at night the beam's edges and the lime spill are the brightest
+thing nearby and the saucer's outline shows; the pilot is hard to see
+at the zooms filmed. Not built: the dog barking, the hair-on-end joke.
+Running: nothing of mine.
