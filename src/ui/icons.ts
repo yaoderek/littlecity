@@ -314,6 +314,15 @@ const DRAWINGS: Record<string, string> = {
     `<path ${thin} d="M37.6 27.6 L41.6 25.6 M36.4 23.4 L38.8 19.8 M40.6 32 L44.4 31.6"/>`,
 
   // The Hand: an open hand reaching down, fingers spread, a little figure dangling from between them.
+  // The UFO: a domed saucer, lights round its rim, a beam of light below it.
+  ufo:
+    `<path stroke-width="0" d="M18.4 27.6 L29.6 27.6 L35.6 44.6 L12.4 44.6 Z" fill="${C.yellow}" fill-opacity="0.45"/>` +
+    `<path d="M16 19.6 Q16.6 9.8 24 9.6 Q31.4 9.8 32 19.6 Z" fill="#a9dcef"/>` +
+    `<path ${thin} d="M21.4 15.8 Q21.6 12.6 24 12.4 Q26.4 12.6 26.6 15.8 Q24 17.4 21.4 15.8 Z" fill="#7ed36a"/>` +
+    `<path d="M4.6 24 Q5.6 18.6 24 18.2 Q42.4 18.6 43.4 24 Q42.4 28.6 24 29.2 Q5.6 28.6 4.6 24 Z" fill="#c9ccd6"/>` +
+    `<circle cx="10.6" cy="24.4" r="1.4" fill="${C.yellow}"/><circle cx="17.2" cy="25.8" r="1.4" fill="${C.red}"/>` +
+    `<circle cx="24" cy="26.2" r="1.4" fill="${C.yellow}"/><circle cx="30.8" cy="25.8" r="1.4" fill="${C.red}"/><circle cx="37.4" cy="24.4" r="1.4" fill="${C.yellow}"/>`,
+
   hand:
     `<path d="M14.2 27.6 L10.6 17.4 Q10.2 14.6 12.6 14.4 Q14.6 14.4 15.4 16.8 L18 23.6 L16.6 9.6 Q16.6 7 19 7 Q21.2 7.1 21.4 9.6 L22.4 22 L23.4 7.8 Q23.6 5.4 25.8 5.6 Q28 5.8 27.8 8.4 L27 22.2 L29.6 10.4 Q30.2 8.2 32.2 8.6 Q34.2 9.2 33.6 11.6 L31.4 24.2 L34.6 20 Q36.4 18.2 38 19.6 Q39.4 21 37.8 23.2 L31 32.8 Q27.4 37.4 21.8 36.6 Q16.6 35.8 14.2 27.6 Z" fill="#f2c9a0"/>` +
     `<path ${thin} d="M18.6 29.4 Q22 31.6 26.6 30.2"/>` +

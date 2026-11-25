@@ -112,6 +112,10 @@ export interface Thrower {
   blast(x: number, y: number, z: number, kind: 'nuke' | 'bomb' | 'bolt'): void;
   /** Throws one person with this velocity (the Hand letting go, a body hitting them). False if they cannot be. */
   fling(p: Person, vx: number, vy: number, vz: number, opts?: { dizzy?: number; spin?: number }): boolean;
+  /** Somebody taken off their feet (the UFO's beam): a straw hat or what they carry drops back to the ground. */
+  knockLoose(p: Person): void;
+  /** People held who are not in the Hand (the UFO's beam): no Hand's shadow under them. */
+  readonly beamed: Set<Person>;
   /** The Hand picks somebody up: they hang where `carry` puts them until `fling`. False if they cannot be. */
   grab(p: Person): boolean;
   carry(p: Person, x: number, y: number, z: number): void;
@@ -457,16 +461,24 @@ export function createThrower(crowd: Crowd, critters: Map<string, Critter> = new
     const k = rand(p.seed, 'rest', Math.round(b.age * 10));
     b.rest = k < 0.5 ? 'back' : k < 0.75 ? 'front' : 'sit';
     t.node = -1;
-    // The hat comes off: up and away a little faster than its owner, spinning on its own.
-    if (t.hatColor && !t.hat && sp > BLOWN.hatAt && rand(p.seed, 'hat', b.age) < 0.8) {
+    if (sp > BLOWN.hatAt) loosen(t, vx, vy, vz, 0.8, 0.85);
+    return true;
+  };
+  /**
+   * The hat comes off (up and away a little faster than its owner, spinning on its own), or else what they carry
+   * is knocked out of their hands: one thing flies, the hat first. `hatChance`, `loadChance`: how likely each.
+   */
+  const loosen = (t: Thrown, vx: number, vy: number, vz: number, hatChance: number, loadChance: number): void => {
+    const p = t.person, b = t.body;
+    if (t.hat) return;
+    if (t.hatColor && rand(p.seed, 'hat', b.age) < hatChance) {
       const hat = makeBody(p.seed ^ 0x9e37, b.x, b.y + 0.2, b.z, p.heading, 0, 0.02);
       hat.upright = false;
       launch(hat, vx * 0.75 + (rand(p.seed, 'hx', b.age) - 0.5) * 1.2, vy * 0.9 + 1.2, vz * 0.75 + (rand(p.seed, 'hz', b.age) - 0.5) * 1.2, 9);
       hat.dizzy = Infinity;
       t.hat = hat;
       p.tumble!.hatless = true;
-    } else if (!t.hat && p.load && sp > BLOWN.hatAt && rand(p.seed, 'load', b.age) < 0.85) {
-      // What they carried is knocked out of their hands (a hat and a load: one thing flies, the hat first).
+    } else if (p.load && rand(p.seed, 'load', b.age) < loadChance) {
       const thing = makeBody(p.seed ^ 0x51ed, b.x, b.y, b.z, p.heading, 0, 0.04);
       thing.upright = false;
       launch(thing, vx * 0.7 + (rand(p.seed, 'lx', b.age) - 0.5) * 1.4, vy * 0.8 + 0.8, vz * 0.7 + (rand(p.seed, 'lz', b.age) - 0.5) * 1.4, 6);
@@ -475,7 +487,6 @@ export function createThrower(crowd: Crowd, critters: Map<string, Critter> = new
       t.loose = p.load;
       p.load = null;
     }
-    return true;
   };
   /** The hat back on the head, or the load back in the hands. */
   const pickedUp = (t: Thrown): void => {
@@ -832,6 +843,11 @@ export function createThrower(crowd: Crowd, critters: Map<string, Critter> = new
       grip(b, x, y, z, Math.max(0.2, c.height * 0.55));
     },
     critterEvents,
+    beamed: new Set<Person>(),
+    knockLoose(p) {
+      const t = thrown.get(p);
+      if (t) loosen(t, 0, 0.6, 0, 1, 1);
+    },
     hover: null,
     shake: null,
     capsize: null,

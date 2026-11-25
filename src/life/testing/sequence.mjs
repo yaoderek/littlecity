@@ -25,6 +25,7 @@
 //   'raidland@…' a landing raid, 'raidboats@…' a boats raid; 'shipsink@0,0,0' drops a bomb on the raid's ship
 //   (x: cells off its side); 'knockall@0,0,0' knocks every building a stage worse. --follow-raid keeps the camera on the raid (its ship, then the band).
 //   building a stage worse, 'mend@10,1,10' / 'mendall@10,1,10' mends it, 'undo@0,0,0' presses undo,
+//   'ufo@10,1,10' calls the UFO there (it comes for somebody near),
 //   'crowdbomb@d,0,0' / 'crowdnuke@d,0,0' drops one d cells off the busiest knot of people out and aims the camera there
 //   --hand person|dog|cat|hen|sheep|soldier|grazer|horse|rider|pigeon|<boat or ship kind>|building,<dx>,<dz>,<ms>[,drop]   the Mischief drawer's Hand, with real
 //                            mouse events: picks up the one of that kind nearest the camera's target, carries it
@@ -242,6 +243,7 @@ try {
           done.push(`${e.verb} at ${px.toFixed(1)},${pz.toFixed(1)} (${bestN} near)`);
           continue;
         }
+        if (e.verb === 'ufo') { done.push(window.__lcUfo?.call(e.x + 0.5, e.y * 0.8, e.z + 0.5) ? 'ufo called' : 'no ufo'); continue; }
         if (e.verb === 'bomb') { m.dropBomb([e.x + 0.5, e.y * 0.8, e.z + 0.5]); done.push('bomb'); continue; }
         if (e.verb === 'nuke') { m.dropNuke([e.x + 0.5, e.y * 0.8, e.z + 0.5]); done.push('nuke'); continue; }
         if (e.verb === 'knockall') {
