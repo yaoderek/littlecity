@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* global console, window, performance, requestAnimationFrame, process */
+/* global console, window, performance, requestAnimationFrame, process, setTimeout */
 // The UFO on a phone (Derek, 2026-11-25: "spawning one in causes massive performance slowdown and
 // pixelation on phones, which persists even after the UFO leaves"). A phone-sized page (390 × 844 at
 // 3×, touch) with its JavaScript slowed --cpu times, the quality governor on (quality=auto), a grown
