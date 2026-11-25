@@ -185,8 +185,9 @@ describe('the governor', () => {
       let t = 0;
       let at = Infinity;
       while (t < 30_000) {
-        t += cost;
-        g.frame(cost, false);
+        const gap = cost * (1 - 0.1 * g.level);
+        t += gap;
+        g.frame(gap, false);
         if (g.level === 5) at = Math.min(at, t);
       }
       expect(g.level, `${cost} ms frames`).toBe(5);
@@ -198,9 +199,10 @@ describe('the governor', () => {
     const g = createGovernor(6);
     let t = 0;
     while (t < 20_000) {
-      t += 150;
+      const gap = 150 - 18 * g.level;
+      t += gap;
       // 30 ms of the gap was the page's own work; the rest is drawing.
-      g.frame(150, true, true, 30);
+      g.frame(gap, true, true, 30);
     }
     expect(g.level).toBeGreaterThan(2);
   });
@@ -221,11 +223,83 @@ describe('the governor', () => {
     expect(rough).toBeGreaterThan(0);
     const settle = (cost: number): number => {
       const g = createGovernor(levels.length, 0, (i) => levels[i]!.rough === true);
-      for (let t = 0; t < 60_000; t += cost) g.frame(cost, true);
+      for (let t = 0; t < 60_000; ) {
+        const gap = cost * (1 - 0.06 * g.level);
+        t += gap;
+        g.frame(gap, true);
+      }
       return g.level;
     };
     expect(settle(25)).toBe(rough - 1); // 40 a second: sharp at 40 is better than soft at 60
-    expect(settle(50)).toBe(levels.length - 1);
+    expect(settle(60)).toBe(levels.length - 1);
+  });
+});
+
+describe('a frame rate that has nothing to do with the drawing', () => {
+  /** Runs a governor over a screen's levels; every change, and where it ends. */
+  function play(dpr: number, gap: (level: number, t: number, n: number) => number, seconds: number, start = 0) {
+    const levels = qualityLevels(dpr);
+    const g = createGovernor(levels.length, start, (i) => levels[i]!.rough === true);
+    const path: { at: number; to: number }[] = [];
+    const spent = levels.map(() => 0);
+    let rough = 0;
+    for (let t = 0, n = 0; t < seconds * 1000; n++) {
+      const d = gap(g.level, t, n);
+      t += d;
+      const to = g.frame(d, true);
+      if (to !== null) path.push({ at: t, to });
+      if (levels[g.level]!.rough) rough += d;
+      // Where it settles: the level it spends the second half at (it tries the one above now and then).
+      if (t > seconds * 500) spent[g.level]! += d;
+    }
+    return { level: g.level, settled: spent.indexOf(Math.max(...spent)), path, rough: rough / 1000, levels };
+  }
+
+  test('capped at 30 a second (Low Power Mode, a battery saver): never rough, and back to its sharpest for good', () => {
+    // Found 2026-11-25 in the live numbers: M3 Max, M4 Pro and iPhones at a steady 31 a second, not one long frame, at the roughest levels.
+    for (const dpr of [1, 2, 3]) {
+      const r = play(dpr, (_l, t) => 33.3 + ((t * 7) % 3) * 0.1, 300);
+      expect(r.level, `at ${dpr}x`).toBe(0);
+      expect(r.rough, `at ${dpr}x`).toBe(0);
+      expect(r.path.filter((c) => c.at > 60_000), `at ${dpr}x`).toEqual([]);
+    }
+  });
+
+  test('capped at 30 and started low (remembered from last time): it climbs back', () => {
+    for (const start of [3, 4, 6]) expect(play(3, () => 33.3, 300, start).level, `from ${start}`).toBe(0);
+  });
+
+  test('slow for its own work whatever the sharpness (45 ms a frame): sharp, as rough would buy nothing', () => {
+    expect(play(3, () => 45, 200).level).toBe(0);
+  });
+
+  test('one frame in eight long for its own work, at every level: it keeps its sharpness', () => {
+    expect(play(3, (_l, _t, n) => (n % 8 === 0 ? 40 : 16.7), 300).level).toBe(0);
+  });
+
+  test('a few seconds of stall (a lot happening at once): back to where it was within half a minute', () => {
+    for (const hitches of [0, 25]) {
+      const r = play(3, (_l, t, n) => (t > 20_000 && t < 25_000 ? 160 : hitches && n % hitches === 0 ? 40 : 16.7), 120);
+      expect(r.level).toBe(0);
+      expect(r.path.length === 0 || r.path.at(-1)!.at < 55_000, JSON.stringify(r.path)).toBe(true);
+    }
+  });
+
+  test('two refreshes a frame until the third level (the screen rounds a frame up): it still finds it', () => {
+    expect(play(1, (l) => (l < 2 ? 33.3 : 16.7), 300).settled).toBe(2);
+  });
+
+  test('a device that needs its rough level, and starts there, keeps it (it looks up once or twice, no more)', () => {
+    const r = play(3, (l) => 160 - 18 * l, 600, 6);
+    expect(r.settled).toBe(6);
+    expect(r.path.length).toBeLessThanOrEqual(6);
+  });
+
+  test('a cap that is lifted (plugged in): it carries on as any device', () => {
+    const r = play(3, (_l, t) => (t < 60_000 ? 33.3 : 16.7), 200);
+    expect(r.level).toBe(0);
+    const slow = play(3, (l, t) => (t < 60_000 ? 33.3 : l < 3 ? 60 : 16.7), 300);
+    expect(slow.settled).toBe(3);
   });
 });
 

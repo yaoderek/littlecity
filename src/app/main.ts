@@ -414,7 +414,8 @@ const governed = levelCount > 1 && (qualityParam === 'auto' || (qualityParam ===
 // Where it starts: a big screen that would be drawn at four times its pixels starts a step down
 // (startLevel), a device that says it is a weak one lower (deviceLevel), and a browser that has been
 // here before where it ended up last time (the governor tries a step up when frames are fast).
-const QUALITY_KEY = 'lc:quality';
+// ('lc:quality' remembered levels that a frame-rate cap or a passing stall had sent a device to: not read any more.)
+const QUALITY_KEY = 'lc:quality.2';
 const qualities = view.quality?.().levels ?? [];
 /** Levels differ by screen: a level is remembered for this many of them at this pixel ratio. */
 const qualityScreen = `${levelCount}@${window.devicePixelRatio}`;
