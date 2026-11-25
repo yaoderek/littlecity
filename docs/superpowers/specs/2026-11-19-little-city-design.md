@@ -1181,7 +1181,8 @@ come back. Nothing destructive ever happens unless the player starts it.
   over the edge. 20–40 s later it comes back over somewhere else in town,
   beams them down, lets go a little above the ground; they land dizzy, get
   up and walk home. With nobody about it searches the empty street with its
-  beam and leaves. Three at most at once (a fourth click is refused). A
+  beam and leaves. As many at once as are called (each its own catch, nobody
+  taken twice; they stack over one spot and give way to each other in the air). A
   nuke under a hovering saucer makes it drop its catch and go. Nothing
   saved changes; undo or a new town ends it at once, the person on their
   feet. Nothing is scaled with the camera's distance. (`src/life/mischief/

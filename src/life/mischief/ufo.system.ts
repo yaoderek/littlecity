@@ -42,8 +42,9 @@ import type { Thrower } from './thrower';
 import { alienMesh, coneMesh, domeMesh, helpMesh, lightsMesh, motesMesh, poolMesh, rimMesh, ringsMesh, SAUCER, saucerMesh, ufoShadowMesh } from './ufo-art';
 
 export const UFO = {
-  /** At most this many at once. */
-  most: 3,
+  /** How far apart (centre to centre) two saucers' hover points must be not to be stacked one over the other, and the step between them. */
+  apart: 2.4,
+  stack: 0.95,
   /** How near the click it looks for somebody (cells): a click on a street takes somebody on that street, never anybody from across the town. */
   near: 4,
   /** Seconds: flying in, the beam coming on, the lift's longest, flying off, away, beaming back down, the empty search. */
@@ -92,6 +93,13 @@ export interface Saucer {
   leanYaw: number;
   /** The grip in the beam (where the person is held). */
   gy: number;
+  /** Where it hovers (or hovered) over the spot (other saucers stack above it there). */
+  hover: { x: number; y: number; z: number };
+  /** Seconds it has waited to go for a saucer hovering over it; seconds it has given way to others in its flights. */
+  wait: number;
+  yielded: number;
+  /** Its own height over the cruising height, a step each (two saucers about never fly level at one height). */
+  lane: number;
   /** Its velocity on the ground plan (for its tilt), and the way it last came in (for the wobble as it stops). */
   vx: number;
   vz: number;
@@ -103,7 +111,7 @@ export interface Saucer {
 
 export interface Ufos {
   readonly saucers: readonly Saucer[];
-  /** A click with the UFO: one comes for somebody near (x, z). False if three are about already. */
+  /** A click with the UFO: one comes for somebody near (x, z) (as many at once as are called). True. */
   call(x: number, y: number, z: number): boolean;
   /** Handles it has out now (0 when none is about: everything it drew has been given back). */
   readonly live: number;
@@ -214,6 +222,7 @@ function edgePoint(y: number, n: number, what: string): { x: number; y: number; 
 function phase(s: Saucer, p: UfoPhase): void {
   s.phase = p;
   s.t = 0;
+  s.wait = 0;
 }
 
 /**
@@ -239,19 +248,48 @@ function fly(s: Saucer, dur: number, arriving: boolean, wait = 0): number {
   return u;
 }
 
+/**
+ * Over its spot and about to come down: held up there (up to 6 s) while another saucer is in the column under it
+ * (flying across it, or still going up or coming down), so it never comes down through one.
+ */
+function holdOver(st: State, s: Saucer, dt: number): void {
+  const u = s.t / UFO.arrive;
+  if (u < 0.69 || u > 0.71 || s.wait >= 6) return;
+  const busy = st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && o.y < s.y + 0.4 && o.y > s.to.y - 1 && Math.hypot(o.x - s.x, o.z - s.z) < UFO.apart + 0.3 && (o.phase === 'in' || o.phase === 'back' || o.phase === 'away' || o.phase === 'leave'));
+  if (!busy) return;
+  s.t -= dt;
+  s.wait += dt;
+}
+
+/** The lowest cruising lane no other saucer about is using. */
+function freeLane(st: State, self?: Saucer): number {
+  for (let k = 0; ; k++) if (!st.list.some((o) => o !== self && o.phase !== 'done' && o.lane === k)) return k;
+}
+
+/** A hover height at (x, z) no lower than `y` and clear above every other saucer hovering (or coming to hover) near there. */
+function stacked(st: State, x: number, z: number, y: number): number {
+  // Above the highest of those near (so it never comes down through one on its way to its place).
+  let h = y;
+  for (const o of st.list) {
+    if (o.phase === 'gone' || o.phase === 'done' || Math.hypot(o.hover.x - x, o.hover.z - z) >= UFO.apart) continue;
+    h = Math.max(h, o.hover.y + UFO.stack);
+  }
+  return h;
+}
+
 function create(st: State, stage: LifeStage, x: number, y: number, z: number): boolean {
-  if (st.list.length >= UFO.most) return false;
   const t = throwerOf(stage);
   const n = ++st.n;
-  // To where it was called: it hovers clear of everything round there (the whole patch it may take somebody
-  // from, so it can glide over them without touching anything).
-  const { top, ground } = skyTop(t, st.shape, x, z, UFO.near + SAUCER.r);
-  const cruise = cruiseOf(st, t);
+  // To where it was called: it hovers clear of everything round there (its beam leans to whoever it takes),
+  // and above any other saucer hovering near (never through one).
+  const { top, ground } = skyTop(t, st.shape, x, z, SAUCER.r + 0.4);
+  const lane = freeLane(st);
+  const cruise = cruiseOf(st, t) + lane * UFO.stack;
   const from = edgePoint(cruise, n, 'in');
   const own = st.own.stage;
   const s: Saucer = {
-    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: Math.max(top, ground) + UFO.clear, z }, ground, click: { x, z },
-    person: null, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0,
+    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, Math.max(top, ground) + UFO.clear), z }, ground, click: { x, z },
+    person: null, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0, wait: 0, yielded: 0, lane, hover: { x: 0, y: 0, z: 0 },
     vx: 0, vz: 0, ax: 1, az: 0,
     h: MESHES.map((mesh) => {
       const h = own.spawnMesh(mesh(), HIDE);
@@ -260,6 +298,7 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number): b
     }),
   };
   void y;
+  s.hover = { ...s.to };
   st.list.push(s);
   return true;
 }
@@ -267,7 +306,7 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number): b
 /** The whole of one saucer's step. */
 function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
   s.t += dt;
-  const x0 = s.x, z0 = s.z;
+  const x0 = s.x, y0 = s.y, z0 = s.z;
   // Spinning gently while it hovers; spinning up before it zips off.
   const going = s.phase === 'away' || s.phase === 'leave';
   s.spin += dt * (going ? 1.2 + Math.min(1, s.t / UFO.prep) * 9 : 1.2);
@@ -276,6 +315,7 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
   const p = s.person;
   switch (s.phase) {
     case 'in': {
+      holdOver(st, s, dt);
       if (fly(s, UFO.arrive, true) < 1) break;
       // Over where it was called, it looks: the nearest person out of doors there; else it searches the spot and goes.
       s.person = crowd ? pickPerson(crowd, st.list.filter((o) => o !== s), s.click.x, s.click.z) : null;
@@ -284,11 +324,8 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
     }
     case 'beam': {
       s.beam = Math.min(1, s.t / UFO.beamOn);
-      if (p && Math.hypot(p.x - s.click.x, p.z - s.click.z) < UFO.near + 1) {
-        // Over them as they stand (at its hover height, clear of everything round the spot).
-        s.x += (p.x - s.x) * Math.min(1, dt * 3);
-        s.z += (p.z - s.z) * Math.min(1, dt * 3);
-      }
+      // The beam leans to them where they stand (it stays where it hovers, clear of everything and of other saucers).
+      if (p) aimAt(s, p.x, p.z);
       if (s.t < UFO.beamOn) break;
       if (!p || !t || !t.grab(p)) {
         s.person = null;
@@ -312,16 +349,18 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.gy += (0.25 + s.t * 0.8) * dt;
       const hatch = s.y - 0.02;
       const b = t.thrown.get(p)!.body;
+      aimAt(s, b.x, b.z);
       b.heading += dt * 1.6;
       const k = Math.min(1, dt * 1.5);
       t.carry(p, b.x + (s.x - b.x) * k, Math.min(s.gy, hatch + 0.3), b.z + (s.z - b.z) * k);
       if (s.gy >= hatch + 0.3 || s.t > UFO.lift + 4) {
         // In through the hatch: out of sight inside it.
+        s.lean = 0;
         s.aboard = true;
         p.visible = false;
         phase(s, 'away');
         s.from = { x: s.x, y: s.y, z: s.z };
-        s.to = edgePoint(cruiseOf(st, t), s.n, 'out');
+        s.to = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'out');
       }
       break;
     }
@@ -334,14 +373,18 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.lean = 0;
       s.beam = 0;
       s.from = { x: s.x, y: s.y, z: s.z };
-      s.to = edgePoint(cruiseOf(st, t), s.n, 'out');
+      s.to = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'out');
       phase(s, 'leave');
       break;
     }
     case 'away':
     case 'leave': {
       s.beam = Math.max(0, s.beam - dt * 3);
-      // A moment to spin up and tilt, then off.
+      // A moment to spin up and tilt, then off: held there (up to 20 s) while another saucer is still in the column over it.
+      if (s.t > UFO.prep && s.wait < 20 && st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && o.y > s.y - 0.05 && o.y < st.cruise + o.lane * UFO.stack - 0.05 && Math.hypot(o.x - s.x, o.z - s.z) < UFO.apart + 0.3)) {
+        s.t = UFO.prep;
+        s.wait += dt;
+      }
       const u = fly(s, UFO.leave, false, UFO.prep);
       if (p && s.aboard && t) t.carry(p, s.x, s.y + 0.1, s.z);
       if (u < 1) break;
@@ -368,16 +411,20 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         break;
       }
       const { top, ground } = skyTop(t, st.shape, spot.x, spot.z, SAUCER.r + 0.5);
-      s.from = edgePoint(cruiseOf(st, t), s.n, 'back');
+      s.lane = freeLane(st, s);
+      s.wait = 0;
+      s.from = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'back');
       s.x = s.from.x;
       s.y = s.from.y;
       s.z = s.from.z;
-      s.to = { x: spot.x, y: Math.max(top, ground) + UFO.clear, z: spot.z };
+      s.to = { x: spot.x, y: stacked(st, spot.x, spot.z, Math.max(top, ground) + UFO.clear), z: spot.z };
+      s.hover = { ...s.to };
       s.ground = spot.y;
       phase(s, 'back');
       break;
     }
     case 'back': {
+      holdOver(st, s, dt);
       const u = fly(s, UFO.arrive, true);
       if (p && t) t.carry(p, s.x, s.y + 0.1, s.z);
       if (u < 1) break;
@@ -401,6 +448,7 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         s.aboard = false;
         p.visible = true;
       }
+      s.lean = 0;
       const u = Math.min(1, (s.t - UFO.beamOn) / UFO.lower);
       b.heading += dt * 1.2;
       t.carry(p, s.x, s.y - 0.02 + (s.ground + 0.75 - s.y) * easeInOut(u), s.z);
@@ -409,12 +457,24 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       t.beamed.delete(p);
       s.person = null;
       s.from = { x: s.x, y: s.y, z: s.z };
-      s.to = edgePoint(cruiseOf(st, t), s.n, 'gone');
+      s.to = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'gone');
       phase(s, 'leave');
       break;
     }
     case 'done':
       break;
+  }
+  // Flying, it gives way: if this step would take it into another saucer, it holds
+  // where it was this step and goes on when the way is clear (each in turn: never more than 15 s in all).
+  if ((s.phase === 'in' || s.phase === 'back' || s.phase === 'away' || s.phase === 'leave') && s.yielded < 15) {
+    const clash = st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && Math.hypot(o.x - s.x, o.z - s.z) < SAUCER.r * 2 + 0.25 && Math.abs(o.y - s.y) < SAUCER.under + SAUCER.over + 0.15);
+    if (clash) {
+      s.x = x0;
+      s.y = y0;
+      s.z = z0;
+      s.t = Math.max(0, s.t - dt);
+      s.yielded += dt;
+    }
   }
   if (dt > 0) {
     s.vx = (s.x - x0) / dt;
@@ -427,6 +487,13 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       }
     }
   }
+}
+
+/** Leans the beam from the hatch to (x, z) on the ground under it. */
+function aimAt(s: Saucer, x: number, z: number): void {
+  const dx = x - s.x, dz = z - s.z, d = Math.hypot(dx, dz), len = Math.max(0.2, s.y - s.ground);
+  s.lean = Math.min(1.1, Math.atan2(d, len));
+  s.leanYaw = Math.atan2(dx, dz);
 }
 
 /** Where it brings them back: a walkable spot (a street, a square, the beach) away from where it took them. */
@@ -642,7 +709,6 @@ export default defineSystem<State>({
         return st.own.live;
       },
       call(x, y, z) {
-        if (st.list.length + st.calls.length >= UFO.most) return false;
         st.calls.push({ x, y, z });
         return true;
       },
@@ -669,7 +735,7 @@ export default defineSystem<State>({
           s.beam = 0;
           s.lean = 0;
           s.from = { x: s.x, y: s.y, z: s.z };
-          s.to = edgePoint(cruiseOf(st, throwerOf(ctx.stage)), s.n, 'blown');
+          s.to = edgePoint(cruiseOf(st, throwerOf(ctx.stage)) + s.lane * UFO.stack, s.n, 'blown');
           phase(s, 'leave');
         }
       }

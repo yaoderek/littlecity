@@ -87,14 +87,16 @@ describe('the UFO', () => {
     expect(mischiefDrawn(t.stage)).toBe(0);
   }, 120_000);
 
-  test('three at most; undo mid-abduction: all gone at once, nothing drawn, the person on their feet', () => {
+  test('as many as are called (no limit); undo mid-abduction: all gone at once, nothing drawn, the person on their feet', () => {
     const t = grown();
     const crowd = crowdOf(t.stage)!;
     const ufos = ufosOf(t.stage)!;
     expect(ufos.call(30.5, 0.8, 22.5)).toBe(true);
     expect(ufos.call(20.5, 0.8, 20.5)).toBe(true);
     expect(ufos.call(26.5, 0.8, 28.5)).toBe(true);
-    expect(ufos.call(24.5, 0.8, 24.5)).toBe(false);
+    expect(ufos.call(24.5, 0.8, 24.5)).toBe(true);
+    t.run(0.1);
+    expect(ufos.saucers.length).toBe(4);
     for (let i = 0; i < 100 && !ufos.saucers.some((s) => s.phase === 'lift'); i++) t.run(0.1);
     const taken = ufos.saucers.find((s) => s.phase === 'lift')!.person!;
     expect(taken.mode).toBe('thrown');
@@ -192,29 +194,40 @@ describe('the UFO', () => {
     expect(problems.slice(0, 5)).toEqual([]);
   }, 300_000);
 
-  test('ten UFOs called and gone (the return visits too) leave nothing behind: no handle out, nothing drawn', () => {
+  test('twenty called in quick succession, many over one spot: each takes its own catch (nobody twice), they never pass through each other, and all gone they leave nothing behind', () => {
     const t = grown();
     const ufos = ufosOf(t.stage)!;
     const crowd = crowdOf(t.stage)!;
     const before = ids(t);
-    let called = 0;
-    for (let i = 0; i < 4000 && (called < 10 || ufos.saucers.length > 0); i++) {
-      if (called < 10 && ufos.saucers.length < UFO.most) {
-        const p = crowd.people.find((q) => q.visible && (q.mode === 'walk' || q.mode === 'linger'));
-        if (p && ufos.call(p.x, p.y, p.z)) called++;
-      }
+    // Twenty taps in two seconds, round the busiest spot.
+    const p0 = crowd.people.find((q) => q.visible && (q.mode === 'walk' || q.mode === 'linger'))!;
+    for (let i = 0; i < 20; i++) {
+      expect(ufos.call(p0.x + ((i * 7) % 5) - 2, p0.y, p0.z + ((i * 3) % 5) - 2)).toBe(true);
       t.run(0.1);
-      // Never more out than the saucers about (twelve handles each).
-      expect(ufos.live).toBe(ufos.saucers.length * 12);
     }
-    expect(called).toBe(10);
-    expect(ufos.saucers.map((s) => `${s.phase} ${s.t.toFixed(1)}`)).toEqual([]);
+    expect(ufos.saucers.length).toBe(20);
+    const problems: string[] = [];
+    for (let i = 0; i < 4000 && ufos.saucers.length > 0; i++) {
+      t.run(0.1);
+      // Never more handles out than the saucers about (twelve each), and nobody in two beams.
+      expect(ufos.live).toBe(ufos.saucers.length * 12);
+      const held = ufos.saucers.map((s) => s.person).filter((p) => p);
+      expect(new Set(held).size).toBe(held.length);
+      // No two discs overlapping (centres closer than a diameter across and nearer than a hull's height up and down).
+      const shown = ufos.saucers.filter((s) => s.phase !== 'gone' && s.phase !== 'done');
+      for (let a = 0; a < shown.length; a++) for (let b = a + 1; b < shown.length; b++) {
+        const A = shown[a]!, B = shown[b]!;
+        if (Math.hypot(A.x - B.x, A.z - B.z) < SAUCER.r * 2 && Math.abs(A.y - B.y) < SAUCER.under + SAUCER.over) problems.push(`${A.n} (${A.phase} lane ${A.lane} t ${A.t.toFixed(2)} to ${A.to.y.toFixed(1)}) and ${B.n} (${B.phase} lane ${B.lane} t ${B.t.toFixed(2)} to ${B.to.y.toFixed(1)}) at ${A.x.toFixed(1)}, ${A.y.toFixed(1)}, ${A.z.toFixed(1)}`);
+      }
+    }
+    expect(problems.slice(0, 5)).toEqual([]);
+    expect(ufos.saucers.length).toBe(0);
     expect(ufos.live).toBe(0);
     // (The last ones set down are still dizzy, with stars: drawn by the thrown bodies' system until they get up.)
     for (let i = 0; i < 400 && crowd.people.some((p) => p.mode === 'thrown'); i++) t.run(0.1);
     t.run(1);
     expect(mischiefDrawn(t.stage)).toBe(0);
-    expect(crowd.people.filter((p) => p.mode === 'thrown').map((p) => `${p.id} vis=${p.visible} ${throwerOf(t.stage)!.thrown.get(p)?.body.phase} beamed=${throwerOf(t.stage)!.beamed.has(p)}`)).toEqual([]);
+    expect(crowd.people.filter((p) => p.mode === 'thrown').length).toBe(0);
     const after = ids(t);
     for (const id of before) expect(after).toContain(id);
   }, 300_000);
