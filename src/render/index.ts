@@ -27,7 +27,6 @@ import * as THREE from 'three';
 import { allChunks, CELL_H, CHUNK, keyX, keyY, keyZ, SEA_Y, SIZE_X, SIZE_Z, type CellKey, type EdgeKey } from '@/core/grid';
 import { identity, type Mat4Like, type Vec3 } from '@/core/mat4';
 import { allStyles, styleVersion } from '@/core/style';
-import { isAirMesh } from '@/gen/airborne';
 import type { PartOutput } from '@/gen/api';
 import { createLayout, type Layout } from '@/gen/layout';
 import { MeshBuilder, parseColor, type MeshData } from '@/gen/mesh';
@@ -64,20 +63,14 @@ import { registriesFor, type Registries } from './registries';
 import { compositeFragment, paperFragment, screenVertex, skyFragment } from './shaders/composite';
 import { GROUND_MAP, heightFragment, heightVertex, shadeFragment } from './shaders/ground';
 import { surfaceFragment, surfaceVertex } from './shaders/surface';
-import { SLOT_AIR, SLOT_GROUNDED, SLOT_LIFTED, SLOT_WIDTH, SlotTable } from './slots';
+import { SLOT_AIR, SLOT_LIFTED, SLOT_WIDTH, SlotTable } from './slots';
 import { buildTerrainColumns } from '@/gen/terrain/terrain.gen';
 import { createGroundMotion } from './ground-motion';
+import { itemKind, meshInAir } from './item-kind';
 import { eyeFrame, type EyeFrame } from './eyecam';
 
 /** While only props and actors move, the grounding picture is redrawn every this many frames. */
 const GROUND_ITEMS = 4;
-/** Whether a mesh is all in the air (src/gen/airborne.ts), remembered per mesh. */
-const airMeshes = new WeakMap<MeshData, boolean>();
-const airOf = (mesh: MeshData): boolean => {
-  let air = airMeshes.get(mesh);
-  if (air === undefined) airMeshes.set(mesh, (air = isAirMesh(mesh)));
-  return air;
-};
 
 export type { CameraPose, Ghost, Ray, TownView, ViewOptions, ViewStats, EyePose } from './api';
 export { overrideRegistries, registriesFor } from './registries';
@@ -1034,7 +1027,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
     const mesh = propOutput(item, it.mover ? 'actor' : 'prop', span).mesh;
     if (it.mover) putMover(`i:${item.id}`, it.hash, mesh, it.slot);
     else dynamic.pool.put(`i:${item.id}`, it.hash, mesh, it.slot);
-    slots.setKind(it.slot, airOf(mesh) ? SLOT_AIR : SLOT_GROUNDED);
+    slots.setKind(it.slot, itemKind(item.type, mesh));
     it.drawn = true;
   };
   /** Draws what has come to be seen since it was planned. */
@@ -1099,7 +1092,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   const spawnMesh = (data: MeshData, at: Mat4Like): InstanceHandle => {
     const key = `x:${spawnCounter++}`;
     let slot = slots.alloc(true);
-    if (airOf(data)) slots.setKind(slot, SLOT_AIR);
+    if (meshInAir(data)) slots.setKind(slot, SLOT_AIR);
     slots.setMatrix(slot, at);
     putMover(key, 0, data, slot);
     return makeHandle(
