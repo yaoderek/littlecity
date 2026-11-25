@@ -26,6 +26,15 @@ export function addLook(sum: LookSum, dx: number, dy: number): boolean {
   return true;
 }
 
+/** A finger turns the eye this many times as far as the mouse would: a thumb has half a phone to move in. */
+export const DRAG_RATE = 2.5;
+
+/** Adds a finger's movement. (All of it, however far: a finger is where it says, and one slow frame is a long way.) */
+export function addDrag(sum: LookSum, dx: number, dy: number): void {
+  sum.dx += dx * DRAG_RATE;
+  sum.dy += dy * DRAG_RATE;
+}
+
 const wrap = (a: number): number => ((((a + 180) % 360) + 360) % 360) - 180;
 
 /** Turns the eye by everything added since the last frame, and empties the sum. */

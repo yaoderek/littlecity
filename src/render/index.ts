@@ -618,7 +618,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
     return persp;
   };
   let eyePose: EyePose | null = null;
-  let eyePrepared = false;
+  let eyeReady: Promise<void> | null = null;
   let ghostPrepared = false;
   let lens: EyeFrame | null = null;
   /** Which set of materials the meshes wear now. */
@@ -1392,8 +1392,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       applyEyeCamera();
     },
     prepareEye() {
-      if (eyePrepared || lens) return;
-      eyePrepared = true;
+      if (eyeReady || lens) return eyeReady ?? Promise.resolve();
       // Dressed for a moment in the fly-mode twins, every scene is compiled as it will be drawn (the
       // town into a two-target buffer like the eye's own; the rest to the screen), then dressed back.
       eyeTarget();
@@ -1401,14 +1400,14 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       dress();
       const was = renderer.getRenderTarget();
       renderer.setRenderTarget(eyeTarget());
-      void renderer.compileAsync(scene, perspCamera).catch(() => undefined);
+      const compiling = [renderer.compileAsync(scene, perspCamera)];
       renderer.setRenderTarget(null);
-      void renderer.compileAsync(postScene, postCamera).catch(() => undefined);
-      void renderer.compileAsync(overlayScene, perspCamera).catch(() => undefined);
+      compiling.push(renderer.compileAsync(postScene, postCamera), renderer.compileAsync(overlayScene, perspCamera));
       if (halfInk) {
         renderer.setRenderTarget(inkTarget());
-        void renderer.compileAsync(inkScene, postCamera).catch(() => undefined);
+        compiling.push(renderer.compileAsync(inkScene, postCamera));
       }
+      eyeReady = Promise.allSettled(compiling).then(() => undefined);
       renderer.setRenderTarget(was);
       wearing = 'orbit';
       dress();
@@ -1416,6 +1415,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       renderer.setRenderTarget(eyeTarget());
       renderer.clear(true, true, false);
       renderer.setRenderTarget(was);
+      return eyeReady;
     },
     prepareGhost() {
       if (ghostPrepared) return;
