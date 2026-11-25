@@ -6,11 +6,12 @@
 // player turns sound on (the same switch as the rest of the town's sound).
 
 import { hash, rand } from '@/core/rand';
-import { defineSystem } from '../api';
+import { defineSystem, type LifeStage } from '../api';
 import { noiseBuffer, pop, strike } from '../sound/synth';
 import { holdAudio, releaseAudio } from '../sound/context';
 import { SOUND_VOLUME_DEFAULT, SOUND_VOLUME_EVENT, SOUND_VOLUME_KEY, readVolume, soundOn } from '../sound/volume';
 import { mischiefOf, type Director } from './director';
+import { ufosOf } from './ufo.system';
 
 /** The master level with the player's volume for sounds on it (the menu's slider). */
 const level = (): number => 0.5 * readVolume(SOUND_VOLUME_KEY, SOUND_VOLUME_DEFAULT);
@@ -21,9 +22,17 @@ interface Audio {
   noise: AudioBuffer;
   crackle: GainNode;
   hiss: GainNode;
+  /** The UFO: a wobbling hum while one is about, a rising tone while its beam is on. */
+  hum: GainNode;
+  humOsc: OscillatorNode;
+  ray: GainNode;
+  rayOsc: OscillatorNode;
 }
 interface State {
   d: Director;
+  /** The UFOs' phases last frame (a zip as one shoots off), and the stage they are found on. */
+  ufoPhases: Map<number, string>;
+  stage: LifeStage;
   wanted: boolean;
   audio: Audio | null;
   off: (() => void)[];
@@ -94,7 +103,44 @@ function start(st: State): void {
   hiss.gain.value = 0;
   waterSrc.connect(high).connect(hiss).connect(master);
   waterSrc.start(0, 0.4);
-  st.audio = { ac, master, noise, crackle, hiss };
+  // The UFO's hum: a low square-ish tone wobbled by a slow one; and its beam's tone, which rises.
+  const humOsc = ac.createOscillator();
+  humOsc.type = 'triangle';
+  humOsc.frequency.value = 92;
+  const wob = ac.createOscillator();
+  wob.frequency.value = 5.5;
+  const wobDepth = ac.createGain();
+  wobDepth.gain.value = 9;
+  wob.connect(wobDepth).connect(humOsc.frequency);
+  const hum = ac.createGain();
+  hum.gain.value = 0;
+  humOsc.connect(hum).connect(master);
+  humOsc.start();
+  wob.start();
+  const rayOsc = ac.createOscillator();
+  rayOsc.type = 'sine';
+  rayOsc.frequency.value = 300;
+  const ray = ac.createGain();
+  ray.gain.value = 0;
+  rayOsc.connect(ray).connect(master);
+  rayOsc.start();
+  st.audio = { ac, master, noise, crackle, hiss, hum, humOsc, ray, rayOsc };
+}
+
+/** A UFO shooting off: a quick rising zip. */
+function zip(a: Audio): void {
+  const t = a.ac.currentTime;
+  const o = a.ac.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(220, t);
+  o.frequency.exponentialRampToValueAtTime(1800, t + 0.35);
+  const g = a.ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+  o.connect(g).connect(a.master);
+  o.start(t);
+  o.stop(t + 0.42);
 }
 
 /** A bang: a thump that drops in pitch, under a burst of rumbling noise. */
@@ -248,7 +294,7 @@ export default defineSystem<State>({
   id: 'mischief.sound',
   order: 101,
   create(ctx) {
-    const st: State = { d: mischiefOf(ctx.stage), wanted: false, audio: null, off: [], crackleIn: 0, bellUntil: 0, bellAt: 0, n: 0 };
+    const st: State = { stage: ctx.stage, ufoPhases: new Map(), d: mischiefOf(ctx.stage), wanted: false, audio: null, off: [], crackleIn: 0, bellUntil: 0, bellAt: 0, n: 0 };
     if (!hasAudio()) return st;
     st.wanted = soundOn();
     const gesture = (): void => {
@@ -307,6 +353,22 @@ export default defineSystem<State>({
       st.crackleIn = 0.05 + rand(hash(st.n++), 'crackle') * (0.5 / Math.min(4, 1 + heat));
       pop(a.ac, a.master, a.noise, Math.min(0.06, 0.02 + heat * 0.005), (st.n % 9) * 0.11);
     }
+    // The UFO: hum while one is about, the beam's tone rising while it lifts somebody, a zip as it shoots off.
+    const ufos = st.stage ? ufosOf(st.stage) : null;
+    let about = 0, beaming = 0;
+    const live = new Set<number>();
+    for (const u of ufos?.saucers ?? []) {
+      live.add(u.n);
+      if (u.phase !== 'gone' && u.phase !== 'done') about++;
+      if (u.beam > 0.05) beaming = Math.max(beaming, u.phase === 'lift' ? Math.min(1, u.t / 3) : 0.3);
+      const was = st.ufoPhases.get(u.n);
+      if (was !== u.phase && (u.phase === 'away' || u.phase === 'leave')) zip(a);
+      st.ufoPhases.set(u.n, u.phase);
+    }
+    for (const n of [...st.ufoPhases.keys()]) if (!live.has(n)) st.ufoPhases.delete(n);
+    a.hum.gain.setTargetAtTime(about > 0 ? 0.035 : 0, t, 0.25);
+    a.ray.gain.setTargetAtTime(beaming > 0 ? 0.03 : 0, t, 0.12);
+    a.rayOsc.frequency.setTargetAtTime(300 + beaming * 500, t, 0.2);
     // The alarm bell: a quick ding-ding while a fire has just started.
     if (t < st.bellUntil && t >= st.bellAt) {
       st.bellAt = t + 0.42;

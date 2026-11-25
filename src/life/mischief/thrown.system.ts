@@ -483,7 +483,7 @@ export default defineSystem<State>({
       st.ring = null;
     }
     const held: { x: number; y: number; z: number; r: number }[] = [];
-    for (const th of t.thrown.values()) if (th.body.phase === 'held') held.push({ x: th.body.x, y: th.body.y, z: th.body.z, r: 0.3 });
+    for (const th of t.thrown.values()) if (th.body.phase === 'held' && !t.beamed.has(th.person)) held.push({ x: th.body.x, y: th.body.y, z: th.body.z, r: 0.3 });
     for (const c of t.critterEvents.keys()) if (c.body?.phase === 'held') held.push({ x: c.body.x, y: c.body.y, z: c.body.z, r: Math.max(0.25, c.height * 1.2) });
     while (st.shadows.length > held.length) st.shadows.pop()!.release();
     const g = t.ground;

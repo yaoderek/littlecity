@@ -23,12 +23,12 @@ const pickAt = (ctx: ActionContext, ray: Parameters<typeof pickCell>[0]): Pick =
 describe('the tray catalogue', () => {
   test('every piece of the kind table is in exactly one drawer, and the tools are in Tools', () => {
     const inDrawers = DRAWER_IDS.flatMap((d) => drawerItems(d).map((i) => i.id));
-    expect([...inDrawers].sort()).toEqual([...allPieceIds(), 'change', 'paint', 'erase', 'raise', 'dig', 'level', 'torch', 'bomb', 'nuke', 'raid', 'mallet', 'hand', 'mend'].sort());
+    expect([...inDrawers].sort()).toEqual([...allPieceIds(), 'change', 'paint', 'erase', 'raise', 'dig', 'level', 'torch', 'bomb', 'nuke', 'raid', 'mallet', 'hand', 'ufo', 'mend'].sort());
     // Shaping the land: the Land group starts the Nature drawer.
     expect(drawerItems('nature').slice(0, 3).map((i) => i.id)).toEqual(['raise', 'dig', 'level']);
     expect(drawerItems('tools').map((i) => i.id)).toEqual(['change', 'paint', 'erase']);
     // Mischief (design section 13b) has a drawer of its own.
-    expect(drawerItems('mischief').map((i) => i.id)).toEqual(['torch', 'bomb', 'nuke', 'raid', 'mallet', 'hand', 'mend']);
+    expect(drawerItems('mischief').map((i) => i.id)).toEqual(['torch', 'bomb', 'nuke', 'raid', 'mallet', 'hand', 'ufo', 'mend']);
     expect(drawerItems('build')[0]!.id).toBe('auto');
     // No drawer is one long row: ten at most, so keys 1–9 and 0 reach every item.
     for (const d of DRAWER_IDS) expect(drawerItems(d).length).toBeLessThanOrEqual(10);

@@ -5,6 +5,7 @@
 //   Mallet  click a building: it is knocked a stage worse (cracked, half, rubble)
 //   Raid    click near a shore: raiders come in off the nearest coast (src/life/raid)
 //   Hand    press on a person or an animal: picked up; drag and let go to throw it (./hand.ts)
+//   UFO     click anywhere: a flying saucer comes for somebody near, beams them up, and brings them back later
 //   Mend    click a damaged building: scaffolding goes up, then it is mended a
 //           stage a click; Shift-click mends it at once
 //
@@ -17,6 +18,7 @@
 import { CELL_H, keyY, type CellKey } from '@/core/grid';
 import type { Game } from '@/app/game';
 import type { Director, MischiefEvent } from '@/life/mischief/director';
+import { ufosOf } from '@/life/mischief/ufo.system';
 import type { TownView } from '@/render/api';
 import { PALETTE } from '@/style/palette';
 import type { Feedback } from './feedback';
@@ -34,6 +36,7 @@ export const MISCHIEF_GUIDE: readonly { tool: MischiefToolId; name: string; how:
   { tool: 'raid', name: 'Raid', how: 'Click near a shore: a longship with a striped sail and a dragon at its prow comes in off the nearest coast, or a little fleet of rowing boats rows in, each to its own landing. The raiders storm ashore roaring, set the thatch alight, kick in doors and carry off sacks, chests and a pig, then sail away with the town in flames. Sink their ship with a bomb or a bolt of lightning and they are stranded: the town chases them into the sea. Undo puts it all back.' },
   { tool: 'mallet', name: 'Mallet', how: 'Click a building to knock it a stage worse: cracked, then half-wrecked, then a heap of its own bricks.' },
   { tool: 'hand', name: 'Hand', how: 'Press on anybody out in the town, a dog, a cat, a hen, a sheep, a soldier, the knight or his horse, a little boat or a big ship: up it comes, kicking. Drag it over the roofs and let go to drop it, or flick to throw it across the island. People land, see stars, get up and carry on; whoever they hit goes over too. A ship dropped on the land lies there until it is refloated. Press on a building and it wobbles on its foundations until you let go.' },
+  { tool: 'ufo', name: 'UFO', how: 'Click anywhere: a flying saucer swoops in, hovers over somebody out of doors near where you clicked, and beams them up, kicking and shouting for help. Half a minute later it brings them back somewhere else in town, a little dizzy. With nobody about, it searches the empty streets with its beam and flies off. Three at most at once.' },
   { tool: 'mend', name: 'Mend', how: 'Click something damaged: scaffolding goes up, and each click mends a stage until it is exactly as you built it. Shift-click mends it at once.' },
 ];
 
@@ -162,6 +165,18 @@ export function createMischiefTools(host: {
     use(tool, pick, { shift }) {
       // The Hand works by pressing (./hand.ts): a click on nothing does nothing.
       if (tool === 'hand') return false;
+      if (tool === 'ufo') {
+        // Anywhere: a saucer comes for somebody near the click (src/life/mischief/ufo.system.ts).
+        const at = pick?.point ?? null;
+        const ufos = ufosOf(host.view.stage);
+        if (!at || !ufos) return false;
+        if (!ufos.call(at[0], at[1], at[2])) {
+          host.refuse('three saucers are about already');
+          return false;
+        }
+        hint(tool);
+        return true;
+      }
       if (tool === 'bomb' || tool === 'nuke') {
         if (!pick) return false;
         // On whatever was clicked: a roof, the ground, the sea.
