@@ -38,7 +38,18 @@ async function somebody(page: Page): Promise<string> {
 }
 
 /** Where a person is on the page now (their middle). */
+/**
+ * Where a person is on the page now (their middle), with them held still and the camera on them first: a
+ * walker read once and pressed later has walked on by then on a loaded machine.
+ */
 async function screenOf(page: Page, id: string): Promise<[number, number]> {
+  await page.evaluate(`(() => {
+    const p = window.__lcPeople.people.find((q) => q.id === ${JSON.stringify(id)});
+    p.startled = Math.max(p.startled, 60);
+    p.startledFace = p.heading;
+    window.__lc.view.setCamera({ target: [p.x, p.y + 0.2, p.z] });
+  })()`);
+  await page.evaluate(frames(3));
   const [x, y] = (await page.evaluate(`(() => {
     const p = window.__lcPeople.people.find((q) => q.id === ${JSON.stringify(id)});
     return window.__lc.view.worldToScreen([p.x, p.y + 0.2, p.z]);
@@ -172,6 +183,34 @@ describe('the Hand', () => {
     await page.waitForFunction('window.__lcThrown.thrower.shake === null || window.__lcThrown.thrower.shake.let');
     await page.waitForFunction('window.__lcThrown.thrower.shake === null', null, { timeout: 20_000 });
     expect(await page.evaluate('JSON.stringify([...window.__lc.world().blocks.entries()])')).toBe(before);
+    expect(errors).toEqual([]);
+    await page.close();
+  });
+});
+
+describe('the UFO', () => {
+  test('a click with the UFO calls one, which comes for somebody', async () => {
+    const { page, errors } = await app.open('/?seed=4242&mischief');
+    await page.waitForFunction('window.__lc !== undefined && window.__lcUfo !== undefined');
+    if ((await page.getAttribute('[data-drawer="mischief"]', 'aria-selected')) !== 'true') await page.click('[data-drawer="mischief"]');
+    if ((await page.getAttribute('[data-item="ufo"]', 'aria-pressed')) !== 'true') await page.click('[data-item="ufo"]');
+    const box = (await page.locator('#town').boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.waitForFunction('window.__lcUfo.saucers.length === 1');
+    await page.waitForFunction("window.__lcUfo.saucers.length === 0 || window.__lcUfo.saucers[0].phase !== 'in'", null, { timeout: 30_000 });
+    expect(errors).toEqual([]);
+    await page.close();
+  });
+
+  test('phone: a tap with the UFO calls one', async () => {
+    const { page, errors } = await app.open('/?seed=4242&mischief', PHONE);
+    await page.waitForFunction('window.__lc !== undefined && window.__lcUfo !== undefined');
+    if ((await page.getAttribute('[data-drawer="mischief"]', 'aria-selected')) !== 'true') await page.tap('[data-drawer="mischief"]');
+    await page.locator('[data-item="ufo"]').scrollIntoViewIfNeeded();
+    if ((await page.getAttribute('[data-item="ufo"]', 'aria-pressed')) !== 'true') await page.tap('[data-item="ufo"]');
+    const box = (await page.locator('#town').boundingBox())!;
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height * 0.4);
+    await page.waitForFunction('window.__lcUfo.saucers.length === 1');
     expect(errors).toEqual([]);
     await page.close();
   });

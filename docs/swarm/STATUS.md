@@ -1868,3 +1868,81 @@ off is the worst for it. Still open: the first press of a session
 makes four audio contexts in one go (180 ms to 2 s in the test browser
 under load): one shared context would do.
 Running: nothing of mine.
+
+**UFO (Derek, 2026-11-24 night).** A new Mischief tool: a saucer flies
+in, beams up a random person who flails and shouts "HELP!", and flies
+off; with nobody about it comes and goes. → the ragdoll and Hand agent
+(`a0dfec5cd5f0c15d7`, `swarm/ragdoll`), resumed. Orchestrator's
+decisions in the brief: called by a click (near the click if anyone is
+there); the person is brought back 20–40 s later somewhere else in
+town, dizzy (nobody is lost for good); nothing scaled with camera
+distance; at most three at once or a queue (agent to choose); cheap to
+draw (the game is live and viral, many weak phones). Also asked: fix the
+flaky Hand e2e test.
+Running: ragdoll agent (UFO).
+
+**UFO merged** (`bbd8b7c`, Opus, `swarm/ragdoll`). A Mischief tool:
+click or tap calls a saucer (up to three at once). In over the map's
+edge in 2.4 s, hovering about 1.7 above the highest roof near its
+catch: the person out of doors nearest the click within 8 cells, else
+anybody (the Hand's rule). A soft yellow-green beam, the person lifted
+turning and kicking over about 3 s under a "HELP!" balloon, hat or load
+dropped, onlookers within 3 cells looking up; in at the hatch (hidden,
+not shrunk); off in 1.6 s; back 20–40 s later at a walkable spot 6+
+cells away, lowered and let go, dizzy 3.5 s, then on their way. Nobody
+about: it sweeps its beam 3.2 s and leaves. A nuke under it flings its
+catch free. Undo and town changes clear it. 7 draw instances a saucer,
+no per-frame allocation; frame cost within the noise. Code:
+`src/life/mischief/ufo*.ts`, catalogue LM03, verb `ufo@x,y,z`. The
+flaky Hand e2e test is fixed (the person held still first). Gate
+(orchestrator, one run): 2,480 passed, 12 skipped, clean; live and
+GitHub both still at `8a28cb1` before publishing. Orchestrator's eye:
+by day the saucer and the HELP! balloon read and it is funny; the beam
+is barely visible; no alien shows in the dome; at night only the dome's
+glow shows (hull and beam lost). Not built: a dog barking, the
+hair-on-end joke. Round 2 sent for the beam, the night look and the
+saucer's presence.
+
+**UFO round 2 merged** (`788acb4`, Opus). The beam: a "tractor" mode in
+the light-beam pattern of `src/render/shaders/surface.ts` (one branch
+in the translucent pass, taken only when the beam's fourth parameter is
+−1): its own lime colour, a tint by day and added light at night,
+brightest at its edges, no fade near the source; five pieces (cone,
+four bands travelling up or down, sparkles, a pool with a pulsing rim,
+a spill of light). The saucer redrawn bigger (radius 1.05): silver
+upper hull, ribbed underside, a self-lit red rim band, twelve chasing
+coloured lights, an antenna, a see-through dome with a green pilot who
+looks about (and leans over the edge when searching an empty street).
+Flight: banking with speed, a wobble on stopping, a bob, a spin-up
+before leaving; a ring shadow. 12 draw instances a saucer; frame cost
+within the noise. New scenario `ufo-empty`; a test of a town change
+mid-abduction. Gate (orchestrator): 2,483 passed, 12 skipped, clean;
+GitHub and the website both at `f97f01a` before publishing.
+Orchestrator's eye: by day the lime beam, the pool and the lights read
+at once; at night the beam's edges and the lime spill are the brightest
+thing nearby and the saucer's outline shows; the pilot is hard to see
+at the zooms filmed. Not built: the dog barking, the hair-on-end joke.
+Running: nothing of mine.
+
+## RULE SINCE 2026-11-25: NOTHING GOES LIVE WITHOUT DEREK'S SIGN-OFF
+
+Derek, 2026-11-25: "because we have a ton of actual players now you cant
+just be autoshipping stuff to prod anymore. you NEED to have me sign off
+on shit locally now." So: merge and gate as before, then STOP. Start a
+local preview, tell him what to try (with a LAN address for his phone),
+and run `tools/deploy-pages.sh` only after he has said yes to that
+change. This holds for every chat and every agent, for rollbacks and
+small fixes too. Phone performance is checked before asking him: a
+throttled phone-sized context, and the quality governor's level before,
+during and after.
+
+**Why now: the UFO (live as `e7ca6d1`) went out on the orchestrator's
+own say and is bad on phones.** Derek's report: (1) calling one causes a
+massive slowdown and pixelation on phones that persists after it has
+left, cause unknown; (2) it takes someone from across the map instead
+of going to where he clicked and looking round there; (3) it clips
+through buildings flying in; (4) the beam should be turquoise, not neon
+green; (5) "why does it return?" (the return was the orchestrator's
+idea, not his). → the UFO's agent (`a0dfec5cd5f0c15d7`), resumed, with
+the performance cause first. Nothing deployed since; whether to take
+the tool off the live site meanwhile is Derek's call (asked).
