@@ -1923,3 +1923,26 @@ at once; at night the beam's edges and the lime spill are the brightest
 thing nearby and the saucer's outline shows; the pilot is hard to see
 at the zooms filmed. Not built: the dog barking, the hair-on-end joke.
 Running: nothing of mine.
+
+## RULE SINCE 2026-11-25: NOTHING GOES LIVE WITHOUT DEREK'S SIGN-OFF
+
+Derek, 2026-11-25: "because we have a ton of actual players now you cant
+just be autoshipping stuff to prod anymore. you NEED to have me sign off
+on shit locally now." So: merge and gate as before, then STOP. Start a
+local preview, tell him what to try (with a LAN address for his phone),
+and run `tools/deploy-pages.sh` only after he has said yes to that
+change. This holds for every chat and every agent, for rollbacks and
+small fixes too. Phone performance is checked before asking him: a
+throttled phone-sized context, and the quality governor's level before,
+during and after.
+
+**Why now: the UFO (live as `e7ca6d1`) went out on the orchestrator's
+own say and is bad on phones.** Derek's report: (1) calling one causes a
+massive slowdown and pixelation on phones that persists after it has
+left, cause unknown; (2) it takes someone from across the map instead
+of going to where he clicked and looking round there; (3) it clips
+through buildings flying in; (4) the beam should be turquoise, not neon
+green; (5) "why does it return?" (the return was the orchestrator's
+idea, not his). → the UFO's agent (`a0dfec5cd5f0c15d7`), resumed, with
+the performance cause first. Nothing deployed since; whether to take
+the tool off the live site meanwhile is Derek's call (asked).
