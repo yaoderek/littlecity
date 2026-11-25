@@ -1868,3 +1868,15 @@ off is the worst for it. Still open: the first press of a session
 makes four audio contexts in one go (180 ms to 2 s in the test browser
 under load): one shared context would do.
 Running: nothing of mine.
+
+**UFO (Derek, 2026-11-24 night).** A new Mischief tool: a saucer flies
+in, beams up a random person who flails and shouts "HELP!", and flies
+off; with nobody about it comes and goes. → the ragdoll and Hand agent
+(`a0dfec5cd5f0c15d7`, `swarm/ragdoll`), resumed. Orchestrator's
+decisions in the brief: called by a click (near the click if anyone is
+there); the person is brought back 20–40 s later somewhere else in
+town, dizzy (nobody is lost for good); nothing scaled with camera
+distance; at most three at once or a queue (agent to choose); cheap to
+draw (the game is live and viral, many weak phones). Also asked: fix the
+flaky Hand e2e test.
+Running: ragdoll agent (UFO).
