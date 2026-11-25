@@ -1170,11 +1170,12 @@ come back. Nothing destructive ever happens unless the player starts it.
   person with a ray beam, and the person flies around and says 'help!' as
   he gets abducted. If there's no people to abduct it should just fly in
   and then fly away").** A tool in the Mischief drawer: a click calls a
-  flying saucer (about a house wide, a domed silver disc with chasing rim
-  lights and a little green figure in its glass dome). It swoops in from
-  beyond the map's edge, stops over somebody out of doors near the click
-  (else anybody), and lets down a soft pale cone of light pooling on the
-  ground; they are taken off their feet, rise turning and kicking with a
+  flying saucer (about two houses wide, a domed silver disc with chasing rim
+  lights and a little green figure in its glass dome). It flies in from
+  beyond the map's edge above the island's tallest thing, comes straight
+  down over the spot clicked (never through anything), takes the nearest
+  person out of doors within 4 cells of the click (nobody from across the
+  town), and lets down a turquoise cone of light pooling on the ground; they are taken off their feet, rise turning and kicking with a
   "HELP!" balloon over them, a hat or what they carried dropping, people
   near looking up; in through the hatch (never shrunk or faded), and off
   over the edge. 20–40 s later it comes back over somewhere else in town,
