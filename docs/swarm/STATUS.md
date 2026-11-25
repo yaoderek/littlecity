@@ -1981,3 +1981,13 @@ the preview: 2,498 passed, 12 skipped, clean.
   visit kept; no limit on saucers (they stack and wait for each other).
 Deploy only after Derek says yes on the preview, and only after
 checking what is live at that moment.
+
+**Derek on the UFO preview (2026-11-25):** (1) a walking person beamed
+up sometimes glitches and flies to the side; (2) the 4-cell search
+radius is far too small: it should home on the nearest person, and
+"nearby" only meant the abduction should be in the camera's view. →
+the UFO's agent, round 4: reproduce and fix the sideways lift (the
+saucer to hover right over its catch, a straight beam); take the
+nearest person to the click among those on screen, with no radius. He
+said nothing yet about phone performance. Still on a local preview;
+nothing live.
