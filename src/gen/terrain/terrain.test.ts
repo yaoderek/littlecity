@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { allChunks, CELL_H, chunkOf, SEA_Y, SIZE_X, SIZE_Z } from '@/core/grid';
-import { MAT } from '@/core/world';
+import { allChunks, CELL_H, chunkOf, columnIndex, key, SEA_Y, SIZE_X, SIZE_Z, type CellKey } from '@/core/grid';
+import { rand } from '@/core/rand';
+import { resetStyles, setStyle } from '@/core/style';
+import { MAT, type Block } from '@/core/world';
 import { resolveShape } from '@/resolve/index';
 import type { ShapePlan } from '@/resolve/plan';
 import { TerrainBuilder, TownBuilder } from '@/scenario';
@@ -8,7 +10,8 @@ import { emptyWorld } from '@/world/world';
 import { inkGroups, validateMesh } from '../checks';
 import { EDGE_FAR, PATTERN, triangleCount, type MeshData } from '../mesh';
 import { terraceGrass } from '@/style/terrain';
-import { buildTerrainChunk, terrainLayer } from './terrain.gen';
+import { generateTerrain } from '@/terrain/terrain';
+import { buildTerrainChunk, terrainChunkMesh, terrainLayer } from './terrain.gen';
 import { FULL } from '../../../tests/helpers/tier';
 
 /** A hand-made island with everything the mesh must handle: beach, steps, a 2-level cliff, a cove, a peak. */
@@ -262,5 +265,39 @@ describe('the terrain layer', () => {
     full.rect(0, 0, SIZE_X - 1, SIZE_Z - 1, 6);
     const plateau = resolveShape(emptyWorld(2), full.build(), { rules: [] });
     for (const p of [sea, plateau]) for (const chunk of allChunks()) expect(validateMesh(terrainLayer.build(chunk, p, null as never).mesh)).toEqual([]);
+  });
+
+  test('a chunk built again after edits is the chunk built from nothing, byte for byte', () => {
+    for (const terrain of [plan.terrain, generateTerrain(4242, 2)]) {
+      // Houses and floors come and go at the steps of the ground (shores, river banks, terraces), a few at a time.
+      const steps: [number, number, number][] = [];
+      for (let z = 1; z < SIZE_Z - 1; z++) for (let x = 1; x < SIZE_X - 1; x++) {
+        const h = terrain.height[columnIndex(x, z)]!;
+        if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => terrain.height[columnIndex(x + dx!, z + dz!)] !== h)) steps.push([x, h, z]);
+      }
+      const blocks = new Map<CellKey, Block>();
+      const floors = new Map<CellKey, 'plaza'>();
+      for (let round = 0; round < 8; round++) {
+        for (let k = 0; k < (round === 0 ? 60 : 6); k++) {
+          const [x, h, z] = steps[Math.floor(rand(5, round, k) * steps.length)]!;
+          const c = key(x, h, z);
+          if (blocks.delete(c) || floors.delete(c)) continue;
+          if (rand(6, round, k) < 0.3) floors.set(c, 'plaza');
+          else blocks.set(c, { kind: 'house', color: 0, rot: 0, seq: k });
+        }
+        const world = { ...emptyWorld(terrain.seed, 2), blocks: new Map(blocks), floors: new Map(floors) };
+        const town = { ...plan, terrain, world };
+        if (round === 6) setStyle('terrain', 'radiusBuilt', 0.02);
+        for (const chunk of allChunks()) {
+          const again = terrainChunkMesh(chunk, town), fresh = buildTerrainChunk(chunk, town).build();
+          for (const k of Object.keys(fresh) as (keyof MeshData)[]) {
+            const a = again[k], b = fresh[k];
+            const bytes = (m: typeof a): Buffer => Buffer.from(m.buffer, m.byteOffset, m.byteLength);
+            expect(a.length === b.length && bytes(a).equals(bytes(b)), `round ${round}, chunk ${chunk.cx}:${chunk.cz}, ${k}`).toBe(true);
+          }
+        }
+      }
+      resetStyles();
+    }
   });
 });

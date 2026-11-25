@@ -33,13 +33,14 @@
 import { CELL_H, columnIndex, inColumnBounds, key, SEA_Y, SIZE_X, SIZE_Z, type Chunk } from '@/core/grid';
 import type { Vec3 } from '@/core/mat4';
 import { hashCombine, rand } from '@/core/rand';
+import { styleVersion } from '@/core/style';
 import { MAT, type Terrain, type World } from '@/core/world';
 import type { ShapePlan } from '@/resolve/plan';
 import { PALETTE } from '@/style/palette';
 import { terraceGrass, TERRAIN } from '@/style/terrain';
 import { MAT_RIVER } from '@/terrain/terrain2';
 import { defineLayer } from '../api';
-import { EDGE_FAR, MeshBuilder, parseColor, PATTERN } from '../mesh';
+import { EDGE_FAR, mergeMeshes, MeshBuilder, parseColor, PATTERN, type MeshData } from '../mesh';
 
 /** Segments in a quarter-circle of outline. */
 const ARC = 6;
@@ -76,6 +77,19 @@ const blend = (a: BankMix, b: BankMix, t: number): BankMix => ({
   shelf: a.shelf + (b.shelf - a.shelf) * t,
 });
 
+/**
+ * What the ground asked about the town while a column was drawn, each question with its answer (one
+ * number): the column looks the same for as long as every one of them still has that answer.
+ */
+interface Asked {
+  /** Where the questions of the column being drawn go. */
+  list: Set<number> | null;
+}
+/** Grid vertices a side of the map. */
+const VERTS_X = SIZE_X + 1;
+/** Questions from this number on ask what stands in a column; below it, whether a corner is squared. */
+const BUILT_Q = 1 << 22;
+
 interface Ground {
   seed: number;
   h(x: number, z: number): number;
@@ -94,6 +108,8 @@ interface Ground {
   built(x: number, z: number, lo: number, hi: number): boolean;
   /** How far a ledge juts out at the top of a level at an outline point, where one is allowed (0 to 1). */
   shelf(x: number, z: number, level: number): number;
+  /** True if a question noted in `Asked` still has the answer noted with it. */
+  holds(question: number): boolean;
 }
 
 /** Smooth seeded noise in [0, 1]. */
@@ -117,7 +133,7 @@ function mustSquare(t: Terrain, w: World, x: number, z: number, level: number): 
   return false;
 }
 
-function groundOf(plan: ShapePlan): Ground {
+function groundOf(plan: ShapePlan, asked?: Asked): Ground {
   const t = plan.terrain;
   const w = plan.world;
   const seed = t.seed;
@@ -142,21 +158,42 @@ function groundOf(plan: ShapePlan): Ground {
     const b = same(ox - sx, oz) && same(ox - sx, oz + sz);
     return a && b ? 1 : a || b ? 0.6 : 0;
   };
+  // Everything the ground reads of the town (the rest is the island's own) is one of two questions: is
+  // this corner squared, and does something stand in this column. Both are noted (see Asked).
+  const corners = new Uint8Array(VERTS_X * (SIZE_Z + 1) * (MAX_LEVEL + 1));
+  const squaredAt = (q: number): boolean => {
+    let a = corners[q]!;
+    if (a === 0) {
+      const vx = q % VERTS_X, vz = Math.floor(q / VERTS_X) % (SIZE_Z + 1), level = Math.floor(q / (VERTS_X * (SIZE_Z + 1)));
+      const yes = mustSquare(t, w, vx - 1, vz - 1, level) || mustSquare(t, w, vx, vz - 1, level) || mustSquare(t, w, vx - 1, vz, level) || mustSquare(t, w, vx, vz, level);
+      corners[q] = a = yes ? 2 : 1;
+    }
+    return a === 2;
+  };
+  /** True if the corner of the level-L outline at a grid vertex is squared for what stands there. */
+  const squared = (vx: number, vz: number, level: number): boolean => {
+    const q = vx + VERTS_X * (vz + (SIZE_Z + 1) * level);
+    const yes = squaredAt(q);
+    asked?.list?.add(q * 2 + (yes ? 1 : 0));
+    return yes;
+  };
+  const builtIn = (x: number, z: number, lo: number, hi: number): boolean => {
+    if (w.floors.has(key(x, lo, z))) return true;
+    for (let y = lo; y < hi; y++) if (w.blocks.has(key(x, y, z))) return true;
+    return false;
+  };
   return {
     seed,
     h,
     mat: (x, z) => (inColumnBounds(x, z) ? t.material[columnIndex(x, z)]! : MAT.water),
     radius(vx, vz, level) {
-      if (mustSquare(t, w, vx - 1, vz - 1, level) || mustSquare(t, w, vx, vz - 1, level) || mustSquare(t, w, vx - 1, vz, level) || mustSquare(t, w, vx, vz, level)) {
-        return Math.min(TERRAIN.radiusBuilt, TERRAIN.radius);
-      }
+      if (squared(vx, vz, level)) return Math.min(TERRAIN.radiusBuilt, TERRAIN.radius);
       const r = Math.max(0.05, TERRAIN.radius - TERRAIN.radiusVary * rand(seed, 'r', vx, vz));
       const st = straightAt(vx, vz, level);
       return st > 0 ? r + (0.5 - r) * st : r;
     },
     straight(vx, vz, level) {
-      if (mustSquare(t, w, vx - 1, vz - 1, level) || mustSquare(t, w, vx, vz - 1, level) || mustSquare(t, w, vx - 1, vz, level) || mustSquare(t, w, vx, vz, level)) return 0;
-      return straightAt(vx, vz, level);
+      return squared(vx, vz, level) ? 0 : straightAt(vx, vz, level);
     },
     warp(x, z) {
       const a = TERRAIN.wobble * 2;
@@ -164,15 +201,22 @@ function groundOf(plan: ShapePlan): Ground {
     },
     built(x, z, lo, hi) {
       if (!inColumnBounds(x, z)) return false;
-      if (w.floors.has(key(x, lo, z))) return true;
-      for (let y = lo; y < hi; y++) if (w.blocks.has(key(x, y, z))) return true;
-      return false;
+      const yes = builtIn(x, z, lo, hi);
+      asked?.list?.add(BUILT_Q + ((columnIndex(x, z) * 16 + lo) * 16 + hi) * 2 + (yes ? 1 : 0));
+      return yes;
     },
     shelf(x, z, level) {
       // Ledges come and go along a face: a slow noise, cut so that about a third of a face has one.
       const n = vnoise(seed ^ (0x1ed + level * 977), x * 0.5, z * 0.5);
       const t = Math.min(1, Math.max(0, (n - 0.5) / 0.2));
       return t * t * (3 - 2 * t);
+    },
+    holds(question) {
+      const was = (question & 1) === 1;
+      if (question < BUILT_Q) return squaredAt(question >> 1) === was;
+      const q = (question - BUILT_Q) >> 1;
+      const col = q >> 8;
+      return builtIn(col % SIZE_X, (col / SIZE_X) | 0, (q >> 4) & 15, q & 15) === was;
     },
   };
 }
@@ -858,29 +902,111 @@ function emitSlab(b: MeshBuilder, chunk: Chunk): void {
 
 // ──────────────────────────────────────────────────────────── the layer ──
 
-/** The terrain mesh for one chunk. Exported for tests. */
+/** Everything the terrain draws in one column: its terraces and banks, the stones at its foot, the sea. */
+function emitColumn(b: MeshBuilder, g: Ground, x: number, z: number, rivers: RiverField | null): void {
+  let top = 0;
+  for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) top = Math.max(top, g.h(x + dx, z + dz));
+  for (let level = 1; level <= Math.min(top, MAX_LEVEL); level++) {
+    emitQuarter(b, g, x, z, -1, -1, level);
+    emitQuarter(b, g, x, z, 1, -1, level);
+    emitQuarter(b, g, x, z, -1, 1, level);
+    emitQuarter(b, g, x, z, 1, 1, level);
+  }
+  emitScree(b, g, x, z);
+  b.setColor(PALETTE.sea).setPattern(PATTERN.water).setInk('sea');
+  emitSea(b, g, x, z, rivers);
+}
+
+/** The terrain mesh for one chunk, from nothing. Exported for tests. */
 export function buildTerrainChunk(chunk: Chunk, plan: ShapePlan): MeshBuilder {
   const g = groundOf(plan);
   const rivers = riverField(plan.terrain);
   // One ink namespace for the whole island: a lawn that crosses a chunk border is still one surface.
   const b = new MeshBuilder({ ink: 'terrain' });
-  for (let z = chunk.z0; z <= chunk.z1; z++) {
-    for (let x = chunk.x0; x <= chunk.x1; x++) {
-      let top = 0;
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) top = Math.max(top, g.h(x + dx, z + dz));
-      for (let level = 1; level <= Math.min(top, MAX_LEVEL); level++) {
-        emitQuarter(b, g, x, z, -1, -1, level);
-        emitQuarter(b, g, x, z, 1, -1, level);
-        emitQuarter(b, g, x, z, -1, 1, level);
-        emitQuarter(b, g, x, z, 1, 1, level);
-      }
-      emitScree(b, g, x, z);
-      b.setColor(PALETTE.sea).setPattern(PATTERN.water).setInk('sea');
-      emitSea(b, g, x, z, rivers);
-    }
-  }
+  for (let z = chunk.z0; z <= chunk.z1; z++) for (let x = chunk.x0; x <= chunk.x1; x++) emitColumn(b, g, x, z, rivers);
   emitSlab(b, chunk);
   return b;
+}
+
+/**
+ * A chunk as it was last built. A piece put down at a step in the ground (by the shore, on a terrace)
+ * squares a corner or two of the land: of the chunk's 256 columns only the few that asked about those
+ * corners are drawn again, and the rest is copied. (Drawn whole, the sea and the land of the chunk were
+ * nearly half of what a town costs to grow.)
+ */
+interface Kept {
+  terrain: Terrain;
+  style: number;
+  mesh: MeshData;
+  /** First vertex of each column, then of the slab, then the end. */
+  starts: Uint32Array;
+  /** What each column asked (Asked). */
+  asked: Int32Array[];
+}
+/** One of each chunk: the island on screen. */
+const keptChunks = new Map<string, Kept>();
+const NOTHING_ASKED = new Int32Array(0);
+
+const cut = (m: MeshData, from: number, to: number): MeshData => ({
+  position: m.position.subarray(from * 3, to * 3),
+  normal: m.normal.subarray(from * 3, to * 3),
+  color: m.color.subarray(from * 3, to * 3),
+  pattern: m.pattern.subarray(from, to),
+  inkId: m.inkId.subarray(from, to),
+  edge: m.edge.subarray(from, to),
+  sway: m.sway.subarray(from, to),
+});
+
+/** The same mesh as buildTerrainChunk, vertex for vertex, drawing only what changed since it was last asked for. */
+export function terrainChunkMesh(chunk: Chunk, plan: ShapePlan): MeshData {
+  const id = `${chunk.cx}:${chunk.cz}`;
+  const style = styleVersion();
+  const last = keptChunks.get(id);
+  const old = last && last.terrain === plan.terrain && last.style === style ? last : null;
+  const asking: Asked = { list: null };
+  const g = groundOf(plan, asking);
+  const rivers = riverField(plan.terrain);
+  const b = new MeshBuilder({ ink: 'terrain' });
+  const cells = (chunk.x1 - chunk.x0 + 1) * (chunk.z1 - chunk.z0 + 1);
+  const starts = new Uint32Array(cells + 2);
+  const asked: Int32Array[] = [];
+  /** The mesh in order: runs of columns copied from the old one, and drawn anew. */
+  const runs: { copy: boolean; from: number; to: number }[] = [];
+  let at = 0;
+  const add = (copy: boolean, from: number, to: number): void => {
+    at += to - from;
+    const run = runs[runs.length - 1];
+    if (run && run.copy === copy && run.to === from) run.to = to;
+    else if (to > from) runs.push({ copy, from, to });
+  };
+  for (let i = 0, z = chunk.z0; z <= chunk.z1; z++) {
+    for (let x = chunk.x0; x <= chunk.x1; x++, i++) {
+      starts[i] = at;
+      if (old && old.asked[i]!.every(g.holds)) {
+        add(true, old.starts[i]!, old.starts[i + 1]!);
+        asked.push(old.asked[i]!);
+        continue;
+      }
+      const from = b.vertexCount;
+      const list = (asking.list = new Set<number>());
+      emitColumn(b, g, x, z, rivers);
+      asking.list = null;
+      add(false, from, b.vertexCount);
+      asked.push(list.size > 0 ? Int32Array.from(list) : NOTHING_ASKED);
+    }
+  }
+  starts[cells] = at;
+  if (old) add(true, old.starts[cells]!, old.starts[cells + 1]!);
+  else {
+    const from = b.vertexCount;
+    emitSlab(b, chunk);
+    add(false, from, b.vertexCount);
+  }
+  starts[cells + 1] = at;
+  const drawn = b.build();
+  const mesh = old ? mergeMeshes(runs.map((r) => cut(r.copy ? old.mesh : drawn, r.from, r.to))) : drawn;
+  keptChunks.set(id, { terrain: plan.terrain, style, mesh, starts, asked });
+  return mesh;
 }
 
 /**
@@ -948,53 +1074,77 @@ export function terraceTops(cols: Iterable<number>, plan: ShapePlan): { col: num
   return out;
 }
 
+/** The island's own part of a chunk's hash, and the columns at a step in the ground: x, z, height and the highest round it. */
+interface LandHash {
+  terrain: Terrain;
+  land: number;
+  steps: Int16Array;
+}
+/** Worked out once for an island, not on every edit (one of each chunk: the island on screen). */
+const landHashes = new Map<string, LandHash>();
+
+function landHash(chunk: Chunk, t: Terrain): LandHash {
+  const id = `${chunk.cx}:${chunk.cz}`;
+  const last = landHashes.get(id);
+  if (last?.terrain === t) return last;
+  let hsh = hashCombine(t.seed, chunk.cx, chunk.cz);
+  // Heights and materials: the shore marks on the sea reach three columns.
+  for (let z = chunk.z0 - 3; z <= chunk.z1 + 3; z++) {
+    for (let x = chunk.x0 - 3; x <= chunk.x1 + 3; x++) {
+      if (!inColumnBounds(x, z)) continue;
+      const i = columnIndex(x, z);
+      hsh = hashCombine(hsh, t.height[i]!, t.material[i]!);
+    }
+  }
+  // The river's flow is worked out over the whole island (riverField): a channel dug far away can turn
+  // the current here, so the flow in and around the chunk is part of its key (shaping the land).
+  const rf = riverField(t);
+  if (rf) {
+    for (let z = chunk.z0 - 1; z <= chunk.z1 + 1; z++) {
+      for (let x = chunk.x0 - 1; x <= chunk.x1 + 1; x++) {
+        if (!inColumnBounds(x, z)) continue;
+        const i = columnIndex(x, z);
+        if (rf.riv[i] === 0) continue;
+        hsh = hashCombine(hsh, i, Math.round(rf.riv[i]! * 64), Math.round(rf.fx[i]! * 64), Math.round(rf.fz[i]! * 64));
+      }
+    }
+  }
+  const steps: number[] = [];
+  const h = (x: number, z: number): number => (inColumnBounds(x, z) ? t.height[columnIndex(x, z)]! : 0);
+  for (let z = chunk.z0 - 2; z <= chunk.z1 + 2; z++) {
+    for (let x = chunk.x0 - 2; x <= chunk.x1 + 2; x++) {
+      if (!inColumnBounds(x, z)) continue;
+      const here = h(x, z);
+      let step = 0;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) step = Math.max(step, Math.abs(h(x + dx, z + dz) - here), h(x + dx, z + dz) - here);
+      if (step === 0) continue;
+      let top = here;
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) top = Math.max(top, h(x + dx, z + dz));
+      steps.push(x, z, here, top);
+    }
+  }
+  const out = { terrain: t, land: hsh, steps: Int16Array.from(steps) };
+  landHashes.set(id, out);
+  return out;
+}
+
 export const terrainLayer = defineLayer({
   layer: 'terrain',
 
   build(chunk, plan) {
-    return { mesh: buildTerrainChunk(chunk, plan).build(), anchors: {} };
+    return { mesh: terrainChunkMesh(chunk, plan), anchors: {} };
   },
 
   hash(chunk, plan) {
-    const t = plan.terrain;
     const w = plan.world;
-    let hsh = hashCombine(t.seed, chunk.cx, chunk.cz);
-    // Heights and materials: the shore marks on the sea reach three columns.
-    for (let z = chunk.z0 - 3; z <= chunk.z1 + 3; z++) {
-      for (let x = chunk.x0 - 3; x <= chunk.x1 + 3; x++) {
-        if (!inColumnBounds(x, z)) continue;
-        const i = columnIndex(x, z);
-        hsh = hashCombine(hsh, t.height[i]!, t.material[i]!);
-      }
-    }
-    // The river's flow is worked out over the whole island (riverField): a channel dug far away can turn
-    // the current here, so the flow in and around the chunk is part of its key (shaping the land).
-    const rf = riverField(t);
-    if (rf) {
-      for (let z = chunk.z0 - 1; z <= chunk.z1 + 1; z++) {
-        for (let x = chunk.x0 - 1; x <= chunk.x1 + 1; x++) {
-          if (!inColumnBounds(x, z)) continue;
-          const i = columnIndex(x, z);
-          if (rf.riv[i] === 0) continue;
-          hsh = hashCombine(hsh, i, Math.round(rf.riv[i]! * 64), Math.round(rf.fx[i]! * 64), Math.round(rf.fz[i]! * 64));
-        }
-      }
-    }
+    const { land, steps } = landHash(chunk, plan.terrain);
+    let hsh = land;
     // What stands at a step in the ground squares its corner (mustSquare). Flat ground does not care.
-    const h = (x: number, z: number): number => (inColumnBounds(x, z) ? t.height[columnIndex(x, z)]! : 0);
-    for (let z = chunk.z0 - 2; z <= chunk.z1 + 2; z++) {
-      for (let x = chunk.x0 - 2; x <= chunk.x1 + 2; x++) {
-        if (!inColumnBounds(x, z)) continue;
-        const here = h(x, z);
-        let step = 0;
-        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) step = Math.max(step, Math.abs(h(x + dx, z + dz) - here), h(x + dx, z + dz) - here);
-        if (step === 0) continue;
-        let top = here;
-        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) top = Math.max(top, h(x + dx, z + dz));
-        let mask = w.floors.has(key(x, here, z)) ? 1 : 0;
-        for (let y = here; y <= top; y++) if (w.blocks.has(key(x, y, z))) mask |= 2 << (y - here);
-        if (mask) hsh = hashCombine(hsh, x, z, mask);
-      }
+    for (let i = 0; i < steps.length; i += 4) {
+      const x = steps[i]!, z = steps[i + 1]!, here = steps[i + 2]!, top = steps[i + 3]!;
+      let mask = w.floors.has(key(x, here, z)) ? 1 : 0;
+      for (let y = here; y <= top; y++) if (w.blocks.has(key(x, y, z))) mask |= 2 << (y - here);
+      if (mask) hsh = hashCombine(hsh, x, z, mask);
     }
     return hsh;
   },
