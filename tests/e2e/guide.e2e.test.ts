@@ -162,9 +162,14 @@ async function touch(cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchE
 }
 
 describe('phone', () => {
-  test('the book button opens a full-height sheet; the close button and a swipe down close it', async () => {
+  test('the menu opens it, a full-height sheet (no book button on a phone); the close button and a swipe down close it', async () => {
     const { page, errors } = await open(PHONE);
-    await page.tap('[data-ui="guide-button"]');
+    const fromMenu = async (): Promise<void> => {
+      await page.tap('[data-ui="menu-button"]');
+      await page.tap('[data-menu="guide"]');
+    };
+    expect(await page.isVisible('[data-ui="guide-button"]')).toBe(false);
+    await fromMenu();
     expect(await isOpen(page)).toBe(true);
     await settled(page); // it slides up
     const sheet = (await page.locator('[data-ui="guide"]').boundingBox())!;
@@ -176,8 +181,6 @@ describe('phone', () => {
     const close = (await page.locator('[data-ui="guide-close"]').boundingBox())!;
     expect(close.width).toBeGreaterThanOrEqual(44);
     expect(close.height).toBeGreaterThanOrEqual(44);
-    const book = (await page.locator('[data-ui="guide-button"]').boundingBox())!;
-    expect(book.width).toBeGreaterThanOrEqual(44);
     await picturesLoad(page);
     await page.waitForTimeout(300);
     await page.screenshot({ path: path.join(SHOTS, 'guide-phone.png') });
@@ -186,7 +189,7 @@ describe('phone', () => {
     expect(await isOpen(page)).toBe(false);
 
     // Swipe down from the top of the pages.
-    await page.tap('[data-ui="guide-button"]');
+    await fromMenu();
     expect(await isOpen(page)).toBe(true);
     await page.waitForTimeout(300);
     const cdp = await page.context().newCDPSession(page);
@@ -197,7 +200,7 @@ describe('phone', () => {
     await page.waitForFunction('!window.__lc.ui.debug().guide');
 
     // A swipe up scrolls the pages and keeps the sheet open.
-    await page.tap('[data-ui="guide-button"]');
+    await fromMenu();
     await page.waitForTimeout(300);
     await touch(cdp, 'touchStart', x, 600);
     for (let dy = 20; dy <= 220; dy += 40) await touch(cdp, 'touchMove', x, 600 - dy);

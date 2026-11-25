@@ -83,14 +83,16 @@ describe('the first visit', () => {
     await page.context().close();
   });
 
-  test('on a phone the note sits under the top row with 44 px targets', async () => {
+  test('on a phone the note is one small card over the tray, with 44 px targets', async () => {
     const { page, errors } = await app.open('/?seed=7', { welcome: true, width: 390, height: 844, hasTouch: true });
     await page.waitForSelector('[data-ui="welcome"]', { timeout: 30_000 });
     await page.screenshot({ path: '.context/shots/welcome-phone.png' });
     const box = (await page.locator('[data-ui="welcome"]').boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(390);
-    expect(box.y + box.height).toBeLessThan(844 * 0.35);
-    for (const sel of ['[data-ui="welcome-close"]', '[data-ui="welcome-empty"]']) {
+    const tabs = (await page.locator('.lc-tabs').boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(tabs.y);
+    expect(box.y).toBeGreaterThan(844 * 0.6);
+    for (const sel of ['[data-ui="welcome-skip"]', '[data-ui="welcome-empty"]', '[data-ui="sky"]']) {
       const b = await page.locator(sel).evaluate((n) => [(n as HTMLElement).offsetWidth, (n as HTMLElement).offsetHeight]);
       expect(Math.min(...b), sel).toBeGreaterThanOrEqual(44);
     }

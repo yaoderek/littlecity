@@ -41,6 +41,7 @@ import { buildScenario, scenarioResolveOptions, type CameraSpec, type Scenario }
 import { generateTerrain, initialWorld, NEW_ISLAND_GEN, terrainOf, type TerrainGen } from '@/terrain/terrain';
 import { download, townFromHash, townPicture } from '@/ui/files';
 import { dressDue, onlyStartingTrees } from '@/ui/growth';
+import { isPhone } from '@/ui/dom';
 import { createInterface, type Interface } from '@/ui/interface';
 import { loadTown } from '@/world/save';
 import { frameDrawn, slowDevice, startAnalytics, track, townShown } from './analytics';
@@ -129,6 +130,9 @@ let ui: Interface | null = null;
 let note: SceneNote | null = null;
 const statsWatch = createStatsWatch({ shape: () => game.shape });
 let statsStrip: ReturnType<typeof createStatsStrip> | null = null;
+/** The numbers on screen: on, except on a phone, where there is no room for them; the player's own choice (the menu) either way. */
+const STATS_KEY = 'little-city.stats';
+let statsOn = (storage()?.getItem(STATS_KEY) ?? (isPhone() ? 'off' : 'on')) === 'on';
 
 const autosave = createAutosave({
   storage: storage(),
@@ -262,6 +266,20 @@ function render(): void {
 ui = createInterface({
   view,
   game,
+  stats: {
+    get on() {
+      return statsOn;
+    },
+    set(on) {
+      statsOn = on;
+      statsStrip?.hide(!on);
+      try {
+        storage()?.setItem(STATS_KEY, on ? 'on' : 'off');
+      } catch {
+        // No storage: the choice lasts until the page closes.
+      }
+    },
+  },
   time: {
     get holding() {
       return signals.holding;
@@ -487,7 +505,8 @@ function frame(now: number): void {
   // The strip at the top right: how many live here, how happy they are, something silly.
   if (ui) {
     const v = statsWatch.update(view.stage, performance.now());
-    if (v) (statsStrip ??= createStatsStrip(ui.el)).show(v);
+    // (Watched while hidden too: the town's mood goes on, and what has happened is there when it is shown.)
+    if (v && statsOn) (statsStrip ??= createStatsStrip(ui.el)).show(v);
   }
   requestAnimationFrame(frame);
 }

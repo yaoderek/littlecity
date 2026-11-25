@@ -338,6 +338,9 @@ const DRAWINGS: Record<string, string> = {
     `<path d="M25.6 22.6 Q33.4 11.8 44.2 12.6 Q42.6 17.4 38.4 19.2 Q41.8 20.6 41.2 24.2 Q37.8 26.6 34.4 25 Q35.8 29.4 32.6 31.6 Q28 31.4 25.6 27.4 Z" fill="${C.white}"/>` +
     `<path ${thin} d="M9.8 19.2 Q16 19.4 21.2 23.8 M13.8 25 Q18 24.6 21.8 26 M38.2 19.2 Q32 19.4 26.8 23.8 M34.2 25 Q30 24.6 26.2 26"/>` +
     `<path d="M22.2 22.8 Q24 20.6 25.8 22.8 L25.4 33.6 Q24 35.6 22.6 33.6 Z" fill="${C.roof}"/>`,
+  // The town's numbers: two of those who live here (as on the strip, src/ui/stats/strip.ts).
+  people:
+    '<circle cx="17" cy="16" r="6"/><path d="M6 40c0-9 5-14 11-14s11 5 11 14"/><circle cx="34" cy="19" r="5"/><path d="M30 28c6-2 12 2 12 12"/>',
   // The guide: an open sketchbook, a little house drawn on its right page, a ribbon to keep the place.
   guide:
     `<path d="M4.6 16.4 L4.8 39.6 Q14.4 36.8 24 41 Q33.6 36.8 43.2 39.4 L43.2 16.2" fill="${C.roof}"/>` +

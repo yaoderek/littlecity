@@ -13,6 +13,9 @@
   white-space: nowrap;
   pointer-events: none;
 }
+.lc-stats[hidden] {
+  display: none;
+}
 .lc-stat {
   display: inline-flex;
   align-items: center;

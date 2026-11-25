@@ -1244,3 +1244,60 @@
     height: 44px;
   }
 }
+
+/* ── a phone starts with the least (src/ui/interface.ts sets .lc-phone) ─── */
+
+.lc-sky { display: none; }
+.lc-phone .lc-sky { display: flex; }
+.lc-phone .lc-corner-right:not(.lc-sky-open) > :is([data-ui='time'], [data-ui='season'], [data-ui='weather']) { display: none; }
+/* Nothing to undo or redo: nothing there. */
+.lc-phone .lc-corner-right > :is([data-ui='undo'], [data-ui='redo']):disabled { display: none; }
+/* Open, the three take the room. */
+.lc-phone .lc-sky-open > :is([data-ui='undo'], [data-ui='redo']) { display: none; }
+.lc-phone .lc-sky-open > .lc-sky .lc-btn-icon { width: 18px; height: 18px; opacity: 0.7; }
+/* The guide is in the menu. */
+.lc-phone .lc-corner-guide { display: none; }
+.lc-phone .lc-toasts { top: calc(72px + env(safe-area-inset-top)); }
+
+.lc-phone .lc-welcome-mini {
+  position: absolute;
+  top: auto;
+  right: auto;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  padding: 6px 7px 6px 14px;
+}
+.lc-welcome-said {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.lc-phone .lc-welcome-mini .lc-text-btn {
+  flex: none;
+  white-space: nowrap;
+}
+.lc-phone .lc-welcome-mini .lc-text-btn {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+/* The length stepper sits in the same place: the card goes above it. */
+.lc-phone .lc-tray:has(.lc-stepper:not([hidden])) .lc-welcome-mini { bottom: calc(100% + 68px); }
+.lc-phone .lc-tray:has(.lc-welcome-mini) .lc-step-hint { display: none; }
+/* A phone on its side: over the sky, between the corners, not over the town. */
+@media (max-height: 500px) {
+  .lc-phone .lc-tray .lc-welcome-mini,
+  .lc-phone .lc-tray:has(.lc-stepper:not([hidden])) .lc-welcome-mini { position: fixed; top: calc(10px + env(safe-area-inset-top)); bottom: auto; }
+}
+/* A menu taller than the window scrolls (X's own browser on an iPhone is 570 px high: the sound could not be reached). */
+.lc-menu {
+  max-height: calc(100dvh - 76px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

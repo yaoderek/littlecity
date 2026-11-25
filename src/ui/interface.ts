@@ -24,7 +24,7 @@ import type { CameraPose, Ghost, TownView } from '@/render/api';
 import { builtByHand, refused, tally, track, watchGrowth } from '@/app/analytics';
 import type { Game } from '@/app/game';
 import { brushAt, copyLook, landColumn, levelSteps, lineCells, planErase, planUse, type ActionContext, type Plan, type ToolState } from './actions';
-import { el, iconButton, installTheme, isCoarsePointer, setIcon } from './dom';
+import { el, iconButton, installTheme, isCoarsePointer, isPhone, PHONE_QUERY, setIcon } from './dom';
 import { createFeedback, wiggle, type Feedback } from './feedback';
 import { createFly, type FlyMode, type FlyPhase } from './fly';
 import { createGrowth, onlyStartingTrees, type Growth } from './growth';
@@ -81,6 +81,8 @@ export interface InterfaceHost {
   openTown(world: World): void;
   /** Added by My towns: every town the player has made (src/app/towns.ts). Without it, no menu entry. */
   towns?: Omit<TownsHost, 'newIsland'>;
+  /** The town's numbers on screen (src/ui/stats): whether they show, and the player's choice. Without it, no menu entry. */
+  stats?: { readonly on: boolean; set(on: boolean): void };
   /** A town is about to be grown on the island on screen: its kind ("A harbour town"), and whether it replaces one still growing. */
   growing?(name: string, regrow: boolean): void;
   /** The growth is finished (or stopped): the town on screen is the grown one. */
@@ -282,12 +284,14 @@ export function createInterface(host: InterfaceHost): Interface {
   let growingNote: (() => void) | null = null;
   const growth = createGrowth(game, {
     onHurry() {
-      growingNote?.();
+      if (!growingNote) return; // the welcome card says so itself
+      growingNote();
       growingNote = feedback.banner('Finishing the town…', []);
     },
     onDone() {
       growingNote?.();
       growingNote = null;
+      welcome?.grown();
       host.grown?.();
       api.sync();
     },
@@ -296,7 +300,7 @@ export function createInterface(host: InterfaceHost): Interface {
   /** The characters grown so far, oldest first: none repeats until all that suit an island have had a turn. */
   let shown: Character[] = [];
   /** Grows a town: the one planned already (a kind the player chose), or the dice's, avoiding those shown. */
-  const grow = (avoid: readonly Character[] = [], chosen?: GrownTown): void => {
+  const grow = (avoid: readonly Character[] = [], chosen?: GrownTown, quiet = false): void => {
     mischief.undo();
     // A new town: nothing of the old one's mischief (a scorch, a cloud, a fire, a mend under way) stays.
     mischiefOf(view.stage).reset();
@@ -310,7 +314,7 @@ export function createInterface(host: InterfaceHost): Interface {
     // My towns: a town grown over one built by hand is a new town; the one it covers stays kept.
     host.growing?.(`${article} ${name}`, regrow);
     growth.start(plan.edits);
-    if (growth.active) growingNote = feedback.banner(`${article} ${name} is growing.`, [{ label: 'Finish now', primary: true, run: () => growth.skip() }]);
+    if (growth.active && !quiet) growingNote = feedback.banner(`${article} ${name} is growing.`, [{ label: 'Finish now', primary: true, run: () => growth.skip() }]);
   };
 
   /**
@@ -444,6 +448,9 @@ export function createInterface(host: InterfaceHost): Interface {
         // No storage: the choice lasts until the page closes.
       }
     },
+    guide: () => guide.toggle(),
+    showGuide: isPhone,
+    ...(host.stats ? { stats: () => host.stats!.on, setStats: (on: boolean) => host.stats!.set(on) } : {}),
     rebuild: () => mischiefOf(view.stage).rebuild,
     setRebuild(on) {
       mischiefOf(view.stage).rebuild = on;
@@ -559,11 +566,34 @@ export function createInterface(host: InterfaceHost): Interface {
   };
   const undoButton = iconButton('undo', 'Undo', { class: 'lc-round', title: 'Undo (⌘Z)', attrs: { 'data-ui': 'undo' } });
   const redoButton = iconButton('redo', 'Redo', { class: 'lc-round', title: 'Redo (⇧⌘Z)', attrs: { 'data-ui': 'redo' } });
+  // A phone starts with the least: the menu, and one button for the time, season and weather, which opens
+  // to the three of them. Undo and redo come when there is something to undo or redo (ui.css, .lc-phone).
+  const skyButton = iconButton('time-run', 'Time, season and weather', { class: 'lc-round lc-sky', attrs: { 'data-ui': 'sky', 'aria-expanded': 'false' } });
+  const corner = el('div', { class: 'lc-card lc-corner lc-corner-right' }, [
+    ...(fly.button ? [fly.button] : []),
+    timeButton,
+    ...(host.seasons ? [seasonButton, weatherButton] : []),
+    undoButton,
+    redoButton,
+    skyButton,
+  ]);
+  const openSky = (open: boolean): void => {
+    corner.classList.toggle('lc-sky-open', open);
+    skyButton.setAttribute('aria-expanded', String(open));
+    setIcon(skyButton, open ? 'close' : 'time-run');
+    skyButton.setAttribute('aria-label', open ? 'Close' : 'Time, season and weather');
+    if (!open) for (const s of sliders) s.close();
+  };
+  skyButton.addEventListener('click', () => openSky(!corner.classList.contains('lc-sky-open')));
+  const phones = window.matchMedia(PHONE_QUERY);
+  const fitPhone = (): void => void root.classList.toggle('lc-phone', phones.matches);
+  fitPhone();
+  phones.addEventListener('change', fitPhone);
   root.append(
     markers.el,
     el('div', { class: 'lc-card lc-corner lc-corner-left' }, [menu.button]),
     el('div', { class: 'lc-card lc-corner lc-corner-left lc-corner-guide' }, [guide.button]),
-    el('div', { class: 'lc-card lc-corner lc-corner-right' }, [...(fly.button ? [fly.button] : []), timeButton, ...(host.seasons ? [seasonButton, weatherButton] : []), undoButton, redoButton]),
+    corner,
     tray.el,
     count,
     menu.el,
@@ -1324,15 +1354,17 @@ export function createInterface(host: InterfaceHost): Interface {
   const welcome = firstVisit
     ? maybeWelcome(root, {
         hasTown: () => !onlyStartingTrees(game.world, game.terrain),
-        growTown: () => grow(),
+        growTown: () => grow([], undefined, isPhone()),
         growing: () => growth.active,
+        compact: () => (isPhone() ? tray.el : null),
+        skip: () => growth.skip(),
         emptyIsland() {
           // The whole growth is one undo step: leave it where it is, and take it back.
           growth.stop();
           game.undo();
         },
       })
-    : { townChanged() {}, dispose() {} };
+    : { townChanged() {}, grown() {}, dispose() {} };
 
   // ?mischief: straight to a grown town with the Mischief drawer open, to try it.
   const openMischief = (): void => {
@@ -1406,6 +1438,7 @@ export function createInterface(host: InterfaceHost): Interface {
     dispose() {
       window.clearTimeout(lengthHintTimer);
       window.clearTimeout(ghostTimer);
+      phones.removeEventListener('change', fitPhone);
       offMischief();
       mischief.dispose();
       growth.stop();

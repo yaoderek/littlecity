@@ -438,6 +438,7 @@ describe('desktop: mouse and keys', () => {
 
   test('on a phone the slider is a strip across the screen with a thumb a finger can hold', async () => {
     const { page, errors } = await open(TOWN, { width: 390, height: 844, hasTouch: true, isMobile: true });
+    await page.tap('[data-ui="sky"]');
     await page.tap('[data-ui="weather"]');
     const card = (await page.locator('[data-ui="slider-weather"]').boundingBox())!;
     expect(card.width).toBeGreaterThan(360);
@@ -449,7 +450,7 @@ describe('desktop: mouse and keys', () => {
   test('the menu: new island asks first; sound toggles; a refusal is shown, not thrown', async () => {
     const { page, errors } = await open(TOWN);
     await page.click('[data-ui="menu-button"]');
-    expect(await js(page, `[...document.querySelectorAll('[data-menu]')].map((b) => b.dataset.menu)`)).toEqual(['grow', 'towns', 'new', 'share', 'postcard', 'download', 'open', 'sound', 'rebuild', 'raiders']);
+    expect(await js(page, `[...document.querySelectorAll('[data-menu]')].map((b) => b.dataset.menu)`)).toEqual(['grow', 'towns', 'new', 'share', 'postcard', 'download', 'open', 'sound', 'rebuild', 'raiders', 'stats']);
 
     // Sound is on until the player turns it off, and the switch governs the music as well.
     expect(await debug(page, 'sound')).toBe(true);

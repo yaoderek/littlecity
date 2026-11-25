@@ -47,6 +47,12 @@ export interface MenuActions {
   setMusicVolume?(v: number): void;
   soundVolume?(): number;
   setSoundVolume?(v: number): void;
+  /** The guide to special buildings, where it has no button of its own (a phone). Left out of the menu when false. */
+  guide?(): void;
+  showGuide?(): boolean;
+  /** The town's numbers (who lives here, how they feel) on screen or not. Left out of the menu when absent. */
+  stats?(): boolean;
+  setStats?(on: boolean): void;
   /** Mischief (design section 13b): the town mends its own damage. Left out of the menu when absent. */
   rebuild?(): boolean;
   setRebuild?(on: boolean): void;
@@ -251,7 +257,24 @@ export function createMenu(actions: MenuActions): Menu {
             true,
           )
         : null;
+    const statsLabel = (on: boolean): string => (on ? 'Town stats: on' : 'Town stats: off');
+    const stats =
+      actions.stats && actions.setStats
+        ? item(
+            'stats',
+            'people',
+            statsLabel(actions.stats()),
+            () => {
+              const next = !actions.stats!();
+              actions.setStats!(next);
+              stats!.querySelector('.lc-btn-label')!.textContent = statsLabel(next);
+              stats!.setAttribute('aria-label', statsLabel(next));
+            },
+            true,
+          )
+        : null;
     panel.replaceChildren(
+      ...(actions.guide && actions.showGuide?.() ? [item('guide', 'guide', 'Guide to special buildings', actions.guide)] : []),
       item('grow', 'grow', 'Grow a town', showGrow, true),
       el('div', { class: 'lc-menu-rule' }),
       ...(actions.myTowns ? [item('towns', 'towns', 'My towns', actions.myTowns)] : []),
@@ -267,6 +290,7 @@ export function createMenu(actions: MenuActions): Menu {
       ...(sounds ? [sounds] : []),
       ...(rebuild ? [rebuild] : []),
       ...(raiders ? [raiders] : []),
+      ...(stats ? [stats] : []),
     );
   };
 

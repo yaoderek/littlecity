@@ -47,6 +47,9 @@ export function createStatsStrip(root: HTMLElement) {
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   return {
+    hide(hidden: boolean): void {
+      strip.hidden = hidden;
+    },
     show(v: StatsView): void {
       people.textContent = v.population === null ? '—' : v.population.toLocaleString();
       const b = FACES.indexOf(face(v.mood));

@@ -60,6 +60,15 @@ export function installTheme(root: HTMLElement = document.body): void {
 }
 
 /** True where the main pointer is a finger (phones, tablets): no hover, bigger targets. */
+/**
+ * A phone-sized window: the interface starts with the least it can (ui.css, `.lc-phone`). The short side
+ * of a phone held sideways counts too. (X's own browser on an iPhone leaves about 400 x 570.)
+ */
+export const PHONE_QUERY = '(max-width: 640px), (pointer: coarse) and (max-height: 500px)';
+export function isPhone(): boolean {
+  return window.matchMedia(PHONE_QUERY).matches;
+}
+
 export function isCoarsePointer(): boolean {
   return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 }
