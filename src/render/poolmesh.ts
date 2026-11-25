@@ -3,6 +3,7 @@
 // `sync()` uploads only the spans the pool says changed.
 
 import * as THREE from 'three';
+import { SIZE_X, SIZE_Z } from '@/core/grid';
 import { VertexPool, type Span } from './pool';
 
 export class PoolMesh {
@@ -51,6 +52,9 @@ export class PoolMesh {
       g.setAttribute('color', attr(pool.color, 4, true));
       g.setAttribute('ink', attr(pool.ink, 2, false));
       g.setAttribute('slot', attr(pool.slot, 1, false));
+      // A pool that is never culled: three would still work out a sphere round every vertex of it, to sort
+      // by (a 33 ms pause on a slow phone each time the pool grew). The middle of the town will do.
+      if (!this.cull) g.boundingSphere = new THREE.Sphere(new THREE.Vector3(SIZE_X / 2, 0, SIZE_Z / 2), SIZE_X);
       this.geometry = g;
       this.mesh.geometry = g;
       this.overlay.geometry = g;
@@ -73,7 +77,7 @@ export class PoolMesh {
     }
     this.geometry.setDrawRange(0, pool.count);
     const live = pool.count - pool.garbage > 0;
-    this.mesh.visible = live;
+    this.mesh.visible = live && pool.solidEntries > 0;
     this.overlay.visible = live && pool.beamEntries > 0;
     if (this.cull && live) {
       // Generous: lifted structures bounce and trees sway a little outside their rest bounds.

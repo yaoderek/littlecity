@@ -33,6 +33,8 @@ export interface PoolEntry {
   slot: number;
   /** Holds PATTERN.beam vertices, which the overlay pass draws. */
   beams: boolean;
+  /** Holds other vertices, which the page's own pass draws. */
+  solid: boolean;
 }
 
 /** A dirty span of vertices: [start, end). */
@@ -59,6 +61,8 @@ export class VertexPool {
   readonly max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   /** Entries holding beam vertices, and entries or slots that the overlay pass must draw. */
   beamEntries = 0;
+  /** Entries the page's own pass must draw: a pool of nothing but smoke has none. */
+  solidEntries = 0;
 
   private dirty: Span[] = [];
   private slotDirty: Span[] = [];
@@ -74,11 +78,13 @@ export class VertexPool {
     const n = mesh.position.length / 3;
     this.reserve(n);
     const offset = this.count;
-    const beams = pack(this, offset, mesh, keepSlot);
+    const mist = pack(this, offset, mesh, keepSlot);
+    const beams = mist > 0, solid = mist < n;
     this.count += n;
-    const entry: PoolEntry = { key, hash, offset, count: n, slot: keepSlot, beams };
+    const entry: PoolEntry = { key, hash, offset, count: n, slot: keepSlot, beams, solid };
     this.entries.set(key, entry);
     if (beams) this.beamEntries++;
+    if (solid) this.solidEntries++;
     if (n > 0) {
       this.mark(this.dirty, offset, offset + n);
       this.mark(this.slotDirty, offset, offset + n);
@@ -139,6 +145,7 @@ export class VertexPool {
     this.count = 0;
     this.garbage = 0;
     this.beamEntries = 0;
+    this.solidEntries = 0;
     this.dirty = [];
     this.slotDirty = [];
     this.min.fill(Infinity);
@@ -152,6 +159,7 @@ export class VertexPool {
       this.garbage += e.count;
     }
     if (e.beams) this.beamEntries--;
+    if (e.solid) this.solidEntries--;
   }
 
   private maybeCompact(): void {
@@ -219,13 +227,20 @@ function growBounds(pool: VertexPool, p: Float32Array): void {
   }
 }
 
-/** Writes a mesh into the pool's arrays at a vertex offset. Returns whether it holds beam or mist vertices (the overlay pass). */
-function pack(pool: VertexPool, offset: number, mesh: MeshData, slot: number): boolean {
+/** True if a mesh holds beam or mist vertices, which the overlay pass draws. */
+export function hazy(mesh: MeshData): boolean {
+  return mesh.pattern.some(isHaze);
+}
+/** As the shader reads it: the pattern without its AIRBORNE bit (src/gen/airborne.ts). */
+const isHaze = (pattern: number): boolean => (pattern & 127) === PATTERN.beam || (pattern & 127) === MIST;
+
+/** Writes a mesh into the pool's arrays at a vertex offset. Returns how many of its vertices are beam or mist (the overlay pass's). */
+function pack(pool: VertexPool, offset: number, mesh: MeshData, slot: number): number {
   const n = mesh.position.length / 3;
   pool.position.set(mesh.position, offset * 3);
   const { normal, color, ink } = pool;
   const mn = mesh.normal, mc = mesh.color, mp = mesh.pattern, mi = mesh.inkId, me = mesh.edge, ms = mesh.sway;
-  let beams = false;
+  let mist = 0;
   for (let v = 0; v < n; v++) {
     const o4 = (offset + v) * 4;
     normal[o4] = Math.round(mn[v * 3]! * 127);
@@ -237,12 +252,12 @@ function pack(pool: VertexPool, offset: number, mesh: MeshData, slot: number): b
     color[o4 + 2] = mc[v * 3 + 2]!;
     const pattern = mp[v]!;
     color[o4 + 3] = pattern;
-    if (pattern === PATTERN.beam || pattern === MIST) beams = true;
+    if (isHaze(pattern)) mist++;
     const o2 = (offset + v) * 2;
     ink[o2] = mi[v]!;
     const e = me[v]! * EDGE_SCALE;
     ink[o2 + 1] = e >= EDGE_MAX ? EDGE_MAX : e <= 0 ? 0 : Math.round(e);
   }
   pool.slot.fill(slot, offset, offset + n);
-  return beams;
+  return mist;
 }

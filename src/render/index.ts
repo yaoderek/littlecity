@@ -27,7 +27,6 @@ import * as THREE from 'three';
 import { allChunks, CELL_H, CHUNK, keyX, keyY, keyZ, SEA_Y, SIZE_X, SIZE_Z, type CellKey, type EdgeKey } from '@/core/grid';
 import { identity, type Mat4Like, type Vec3 } from '@/core/mat4';
 import { allStyles, styleVersion } from '@/core/style';
-import { isAirMesh } from '@/gen/airborne';
 import type { PartOutput } from '@/gen/api';
 import { createLayout, type Layout } from '@/gen/layout';
 import { MeshBuilder, parseColor, type MeshData } from '@/gen/mesh';
@@ -57,26 +56,21 @@ import { gradeAt } from './grade';
 import { qualityLevels, type Quality } from './quality';
 import { buildWithin, oldestFirst, REBUILD_BUDGET_MS, sameAnchors, sameKeys } from './rebuild-budget';
 import { paperOf, seasonFrame, seasonGrade } from './season';
+import { hazy } from './pool';
 import { PoolMesh } from './poolmesh';
 import { createPrecip } from './precip';
 import { registriesFor, type Registries } from './registries';
 import { compositeFragment, paperFragment, screenVertex, skyFragment } from './shaders/composite';
 import { GROUND_MAP, heightFragment, heightVertex, shadeFragment } from './shaders/ground';
 import { surfaceFragment, surfaceVertex } from './shaders/surface';
-import { SLOT_AIR, SLOT_GROUNDED, SLOT_LIFTED, SLOT_WIDTH, SlotTable } from './slots';
+import { SLOT_AIR, SLOT_LIFTED, SLOT_WIDTH, SlotTable } from './slots';
 import { buildTerrainColumns } from '@/gen/terrain/terrain.gen';
 import { createGroundMotion } from './ground-motion';
+import { itemKind, meshInAir } from './item-kind';
 import { eyeFrame, type EyeFrame } from './eyecam';
 
 /** While only props and actors move, the grounding picture is redrawn every this many frames. */
 const GROUND_ITEMS = 4;
-/** Whether a mesh is all in the air (src/gen/airborne.ts), remembered per mesh. */
-const airMeshes = new WeakMap<MeshData, boolean>();
-const airOf = (mesh: MeshData): boolean => {
-  let air = airMeshes.get(mesh);
-  if (air === undefined) airMeshes.set(mesh, (air = isAirMesh(mesh)));
-  return air;
-};
 
 export type { CameraPose, Ghost, Ray, TownView, ViewOptions, ViewStats, EyePose } from './api';
 export { overrideRegistries, registriesFor } from './registries';
@@ -144,6 +138,8 @@ interface DrawnLayer {
 }
 interface DrawnItem {
   hash: number;
+  /** Its mesh is in a pool. */
+  drawn: boolean;
   /** True for actors: drawn from the movers pool. */
   mover: boolean;
   slot: number;
@@ -675,12 +671,31 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   // Actors and spawned things (people, birds, boats, smoke) move every frame. They live in a pool of
   // their own that is left out of the grounding picture, so their moving never makes it redraw.
   const movers = addPool(false, moverMaterial);
-  const moverCaps = movers.addView(capMaterial);
-  moverCaps.renderOrder = 1;
-  scene.add(moverCaps);
+  // Of those, whatever holds smoke or a beam of light lives apart: the overlay pass, which draws only
+  // smoke and beams, then runs over it and not over every person and boat in town as well.
+  const haze = addPool(false, moverMaterial);
+  const moverPools = [movers, haze];
+  const moverCaps = moverPools.map((p) => {
+    const caps = p.addView(capMaterial);
+    caps.renderOrder = 1;
+    scene.add(caps);
+    return caps;
+  });
+  const putMover = (key: string, hash: number, mesh: MeshData, slot: number): void => {
+    const [to, other] = hazy(mesh) ? [haze, movers] : [movers, haze];
+    other.pool.remove(key);
+    to.pool.put(key, hash, mesh, slot);
+  };
+  const removeMover = (key: string): void => {
+    for (const p of moverPools) p.pool.remove(key);
+  };
+  const removeItem = (id: string, it: DrawnItem): void => {
+    if (it.mover) removeMover(`i:${id}`);
+    else dynamic.pool.remove(`i:${id}`);
+  };
   const ghostScene = new THREE.Scene().add(dynamic.addView(ghostMaterial));
   const ghostPostScene = new THREE.Scene().add(screenMesh(ghostComposite));
-  const allPools = [...chunkPools.values(), dynamic, movers];
+  const allPools = [...chunkPools.values(), dynamic, ...moverPools];
   const chunkKeyOf = (x: number, z: number): string => `${Math.floor(x / CHUNK)}:${Math.floor(z / CHUNK)}`;
   // Shaping the land: raised and dug columns bounce and sink for a moment (ground-motion.ts).
   const groundMotion = createGroundMotion(dynamic.pool, slots, (cols, plan) => buildTerrainColumns(cols, plan).build());
@@ -715,6 +730,12 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   let pending = new Set<StructureId>();
   /** A setTown or setDressing ran since the last frame: that frame does no deferred rebuilding. */
   let busy = false;
+  /**
+   * Items not drawn yet: an item's mesh is made when it is first seen, not when it is planned. The
+   * festival's lights wait a year for the festival and the plan's own people are never seen (life draws
+   * its own): together a fifth of a town's vertices, in every pass of every frame.
+   */
+  const unseen = new Map<string, { item: Prop | Actor; span: number }>();
   let spawnCounter = 0;
   let ghostKeys: string[] = [];
   let ghostSlots: number[] = [];
@@ -763,10 +784,10 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   const dress = (): void => {
     const m = wearing === 'fly' ? perspMaterials() : null;
     for (const p of allPools) {
-      p.mesh.material = p === movers ? (m?.movers ?? moverMaterial) : bareOn ? (m?.bare ?? bareMaterial) : (m?.surface ?? surfaceMaterial);
+      p.mesh.material = p === movers || p === haze ? (m?.movers ?? moverMaterial) : bareOn ? (m?.bare ?? bareMaterial) : (m?.surface ?? surfaceMaterial);
       p.overlay.material = m?.overlay ?? overlayMaterial;
     }
-    moverCaps.material = m?.cap ?? capMaterial;
+    for (const c of moverCaps) c.material = m?.cap ?? capMaterial;
     paperMesh.material = m?.sky ?? paperMaterial;
     postMesh.material = m?.composite ?? compositeMaterial;
     inkMesh.material = m?.ink ?? inkMaterial;
@@ -824,10 +845,11 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
     partOutputs.clear();
     spawnOutputs.clear();
     for (const [id, it] of items) {
-      (it.mover ? movers : dynamic).pool.remove(`i:${id}`);
+      removeItem(id, it);
       slots.release(it.slot);
     }
     items.clear();
+    unseen.clear();
     anchorFrames.clear();
     layout = null;
   };
@@ -1001,6 +1023,23 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   const noRelease = (): void => {};
   const itemHandle = (id: string, entry: DrawnItem): InstanceHandle => makeHandle(() => (items.get(id) === entry ? entry.slot : 0), () => entry.base, noRelease);
 
+  const drawItem = (it: DrawnItem, item: Prop | Actor, span: number): void => {
+    const mesh = propOutput(item, it.mover ? 'actor' : 'prop', span).mesh;
+    if (it.mover) putMover(`i:${item.id}`, it.hash, mesh, it.slot);
+    else dynamic.pool.put(`i:${item.id}`, it.hash, mesh, it.slot);
+    slots.setKind(it.slot, itemKind(item.type, mesh));
+    it.drawn = true;
+  };
+  /** Draws what has come to be seen since it was planned. */
+  const drawSeen = (): void => {
+    for (const [id, { item, span }] of unseen) {
+      const it = items.get(id);
+      if (it && !slots.isVisible(it.slot)) continue;
+      unseen.delete(id);
+      if (it) drawItem(it, item, span);
+    }
+  };
+
   /**
    * `onlyMoved` (a drain's sync, with no life.sync after it): an item whose mesh and place are as they
    * were keeps whatever pose and visibility life gave it.
@@ -1019,17 +1058,16 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       if (!it) {
         const mover = category === 'actor';
         const slot = slots.alloc(mover);
-        const entry: DrawnItem = { hash: NaN, mover, slot, base, handle: null as unknown as InstanceHandle };
+        const entry: DrawnItem = { hash: NaN, drawn: false, mover, slot, base, handle: null as unknown as InstanceHandle };
         entry.handle = itemHandle(item.id, entry);
         items.set(item.id, (it = entry));
       }
       const hash = item.hash * 31 + Math.round(span * 1000);
       const same = it.hash === hash && sameKeys(it.base, base);
       if (it.hash !== hash) {
-        const mesh = propOutput(item, category, span).mesh;
-        (it.mover ? movers : dynamic).pool.put(`i:${item.id}`, hash, mesh, it.slot);
-        slots.setKind(it.slot, airOf(mesh) ? SLOT_AIR : SLOT_GROUNDED);
         it.hash = hash;
+        if (it.drawn) drawItem(it, item, span);
+        else unseen.set(item.id, { item, span });
       }
       it.base = base;
       if (onlyMoved && same) return;
@@ -1042,9 +1080,10 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
     for (const a of next.actors) visit(a, 'actor');
     for (const [id, it] of items) {
       if (seen.has(id)) continue;
-      (it.mover ? movers : dynamic).pool.remove(`i:${id}`);
+      removeItem(id, it);
       slots.release(it.slot);
       items.delete(id);
+      unseen.delete(id);
     }
     for (const k of partOutputs.keys()) if (!live.has(k)) partOutputs.delete(k);
   };
@@ -1053,15 +1092,15 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   const spawnMesh = (data: MeshData, at: Mat4Like): InstanceHandle => {
     const key = `x:${spawnCounter++}`;
     let slot = slots.alloc(true);
-    if (airOf(data)) slots.setKind(slot, SLOT_AIR);
+    if (meshInAir(data)) slots.setKind(slot, SLOT_AIR);
     slots.setMatrix(slot, at);
-    movers.pool.put(key, 0, data, slot);
+    putMover(key, 0, data, slot);
     return makeHandle(
       () => slot,
       () => at,
       () => {
         if (slot === 0) return;
-        movers.pool.remove(key);
+        removeMover(key);
         slots.release(slot);
         slot = 0;
       },
@@ -1200,6 +1239,18 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   resizeTargets();
   renderer.setSize(width, height, false);
 
+  // The first frame's shaders are handed to the driver now, and linked by it while the town is worked out;
+  // each used to be asked for in the first frame, one after the other, and waited for there. (A program is
+  // keyed by its shader and defines alone, so any mesh and any target will do. The page's own waits for the
+  // script that made the view to say how sharp to draw: that is in its defines.)
+  const compile = (...materials: THREE.Material[]): void => {
+    const all = new THREE.Scene();
+    for (const m of materials) all.add(screenMesh(m));
+    renderer.compile(all, camera);
+  };
+  compile(surfaceMaterial, moverMaterial, overlayMaterial, shadeMaterial, heightMaterial, paperMaterial);
+  queueMicrotask(() => compile(compositeMaterial, ...(halfInk ? [inkMaterial] : [])));
+
   let drawCalls = 0;
   let triangles = 0;
 
@@ -1228,6 +1279,13 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       rebuildLayout();
       syncDressing(nextDressing);
       endRebuild(t0);
+    },
+    drawSeen() {
+      if (unseen.size === 0) return;
+      const t0 = performance.now();
+      drawSeen();
+      rebuildMs += performance.now() - t0;
+      lastSpent = { ...spent };
     },
     setGhost(ghost: Ghost | null) {
       clearGhost();
@@ -1369,6 +1427,10 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       probe.frustumCulled = false;
       void renderer.compileAsync(new THREE.Scene().add(probe), camera).then(() => probe.geometry.dispose(), () => probe.geometry.dispose());
       void renderer.compileAsync(ghostPostScene, postCamera).catch(() => undefined);
+      // And what is first drawn in the middle of play, in one frame: rain and snow, a ship at the edge of the
+      // map, the leaves coming down.
+      void renderer.compileAsync(precip.scene, camera).catch(() => undefined);
+      void renderer.compileAsync(new THREE.Scene().add(screenMesh(capMaterial), screenMesh(bareMaterial)), camera).catch(() => undefined);
     },
     gpu() {
       const gl = renderer.getContext();
@@ -1582,6 +1644,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
         inkUniforms.uPR.value = pixelRatio / 2;
       }
 
+      drawSeen();
       updateWind(signals);
       if (slots.generation !== slotGeneration) {
         slotGeneration = slots.generation;
@@ -1598,7 +1661,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       let rebuilt = false;
       for (const p of allPools) {
         const changed = p.sync();
-        if (p !== movers) rebuilt ||= changed;
+        if (p !== movers && p !== haze) rebuilt ||= changed;
         overlay ||= p.overlay.visible;
       }
       su.uGround.value = LOOK.ground;
@@ -1627,22 +1690,22 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
         slots.moved = false;
         slots.urgent = false;
         groundAge = 0;
-        const moversShown = movers.mesh.visible;
+        const shown = moverPools.map((p) => p.mesh.visible);
         paperMesh.visible = false;
-        movers.mesh.visible = false;
-        moverCaps.visible = false;
+        for (const p of moverPools) p.mesh.visible = false;
+        for (const c of moverCaps) c.visible = false;
         scene.overrideMaterial = heightMaterial;
         renderer.setRenderTarget(heightRT);
         renderer.clear(true, true, false);
         renderer.render(scene, mapCamera);
         scene.overrideMaterial = null;
         paperMesh.visible = true;
-        movers.mesh.visible = moversShown;
+        moverPools.forEach((p, i) => (p.mesh.visible = shown[i]!));
         renderer.setRenderTarget(shadeRT);
         renderer.render(shadeScene, postCamera);
         mark('ground');
       }
-      moverCaps.visible = movers.mesh.visible && capSlots.size > 0;
+      moverCaps.forEach((c, i) => (c.visible = moverPools[i]!.mesh.visible && capSlots.size > 0));
       surfaceUniforms.uSlab.value = TERRAIN.slabRadius;
       const eyeCamera = lens ? perspCamera : camera;
       const depthBuffer = renderer.state.buffers.depth;

@@ -25,6 +25,13 @@ const FACES = [
 ];
 const face = (mood: number) => FACES[mood >= 80 ? 0 : mood >= 60 ? 1 : mood >= 40 ? 2 : mood >= 20 ? 3 : 4]!;
 
+/** Plain digits where there is nothing to group: the first toLocaleString loads the browser's number tables (10 ms, 60 on a slow phone, in the first frame). */
+const grouped = (n: number): string => (n > -1000 && n < 1000 ? String(n) : n.toLocaleString());
+/** Text is written only when it changes: shown four times a second, it would repaint the strip four times a second. */
+const write = (node: HTMLElement, text: string): void => {
+  if (node.textContent !== text) node.textContent = text;
+};
+
 export function createStatsStrip(root: HTMLElement) {
   const people = el('span', { class: 'lc-stat-n' });
   const mood = el('span', { class: 'lc-stat-n' });
@@ -51,23 +58,23 @@ export function createStatsStrip(root: HTMLElement) {
       strip.hidden = hidden;
     },
     show(v: StatsView): void {
-      people.textContent = v.population === null ? '—' : v.population.toLocaleString();
+      write(people, v.population === null ? '—' : grouped(v.population));
       const b = FACES.indexOf(face(v.mood));
       if (b !== band) {
         band = b;
         moodIcon.innerHTML = FACES[b]!;
       }
-      mood.textContent = String(v.mood);
+      write(mood, String(v.mood));
 
       if (!v.silly) {
-        silly.hidden = true;
+        if (!silly.hidden) silly.hidden = true;
         shown = null;
         return;
       }
-      latest = v.silly.n.toLocaleString();
+      latest = grouped(v.silly.n);
       if (v.silly.label === shown) {
         // Same label: the number is live, unless the label is mid-fade (the swap then sets it).
-        if (!silly.classList.contains('lc-stat-out')) count.textContent = latest;
+        if (!silly.classList.contains('lc-stat-out')) write(count, latest);
         return;
       }
       const swap = () => {
