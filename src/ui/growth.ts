@@ -49,6 +49,9 @@ export interface GrowthOptions {
 export const SLOW = 12;
 /** After a run that took so long, a rest this many times as long. */
 export const REST = 3;
+/** ... and at least this long (ms) where a run is a frame or more lost: fewer hitches, not merely smaller ones. */
+export const PAUSE = 450;
+const HITCH = 25;
 /** At most this many edits in a run. */
 export const RUN = 24;
 /** Skipping on a slow device: each frame's run aims to take about this long, ms. */
@@ -147,7 +150,7 @@ export function createGrowth(game: Game, opts: GrowthOptions = {}): Growth {
       } else if (cost > SLOW) {
         // (A device that stalls for seconds does not owe all of them at once.)
         due = Math.min(due, RUN);
-        if (due < 1 || now - rested < cost * REST) return;
+        if (due < 1 || now - rested < Math.max(cost * REST, cost > HITCH ? PAUSE : 0)) return;
         const n = Math.floor(due);
         due -= n;
         rested = now + run(n);

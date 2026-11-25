@@ -11,6 +11,9 @@
 export const CHEAP = 12;
 /** A dressing takes at most 1 / (1 + REST) of the time. */
 export const REST = 3;
+/** ... and where it is frames lost, not more often than this (ms), however cheap it gets: fewer hitches. */
+export const APART = 800;
+const HITCH = 25;
 /** ... but the town is never left undressed longer than this (ms). */
 export const LONGEST = 1600;
 
@@ -53,7 +56,7 @@ export function createPace(): Pace {
       since ??= now;
       if (now - since >= LONGEST) return true;
       // The first frame draws the piece itself; the dressing is for a frame after it.
-      return frames > 1 && now - last >= cost * REST;
+      return frames > 1 && now - last >= Math.max(cost * REST, cost > HITCH ? APART : 0);
     },
     done(now, took) {
       // Quick to believe it is slow, slower to believe it is fast again.
