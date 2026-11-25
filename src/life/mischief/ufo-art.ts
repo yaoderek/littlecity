@@ -1,14 +1,28 @@
 // What the UFO is drawn with (design section 13b, the UFO). Owner: Mischief.
 //
-//   saucerMesh   a domed disc about a house wide: a silver hull with a soft
-//                round outline, a band of panels, a glass dome with a little
-//                green figure inside; origin at the middle of its underside
-//   lightsMesh   the ring of lights round the rim, half of them (two copies
-//                drawn in turn make them chase)
-//   beamMesh     the cone of light from its underside to the ground, one
-//                unit tall (scaled to the drop), and the round pool it lays
-//                on the ground: MIST, a translucent wash, never inked
-//   shadowMesh   a soft round shadow on whatever is under it
+//   saucerMesh   a cartoon flying saucer about a house and a half wide: a silver
+//                upper hull and a darker ribbed underside, a red rim band that
+//                glows (so the saucer reads against dark roofs at night), a
+//                lime glow round the hatch underneath, the dome's base ring, an
+//                antenna; origin at the middle of its underside
+//   domeMesh     its glass dome: a pale translucent wash (MIST), so whoever
+//                sits inside it shows through
+//   alienMesh    the little green pilot, head, big black eyes and shoulders,
+//                drawn on its own (it leans over the dome's edge to look about)
+//   lightsMesh   the ring of coloured lights round the rim and the antenna's
+//                tip, half of them in each of two copies (drawn in turn: they
+//                chase and the tip blinks); self-lit
+//   coneMesh     the tractor beam: a cone from the hatch (y 0) to the ground
+//                (y −1), translucent lime light, brightest at its edges, fading
+//                down its length (the renderer's tractor mode: PATTERN.beam
+//                with param d = −1, src/render/shaders/surface.ts)
+//   ringsMesh    four bands round the cone a quarter of its length apart,
+//                moved up it (lifting) or down it (setting down)
+//   poolMesh     the pool of light where the beam meets the ground, and the
+//                wider spill of it round about (lighting the street at night)
+//   rimMesh      the pool's bright pulsing rim
+//   motesMesh    sparkles rising in the beam
+//   ufoShadowMesh  a ring of shadow under it (bigger as it comes down)
 //   helpMesh     the "HELP!" balloon over whoever is taken (the raiders' card)
 
 import { rotationY } from '@/core/mat4';
@@ -18,90 +32,183 @@ import { airborne, MIST } from '@/gen/airborne';
 import { balloon, dot, stroke } from '@/parts/people/balloon';
 import { PALETTE } from '@/style/palette';
 
-/** The saucer's size: its radius (a house is a cell wide), the hull's height under and over the rim, the dome. */
-export const SAUCER = { r: 0.72, under: 0.13, over: 0.16, dome: 0.3, lights: 10 } as const;
+/** The saucer's size: radius, the hull under and over the rim, the dome, how many lights. The beam's colour. */
+export const SAUCER = { r: 1.05, under: 0.15, over: 0.2, dome: 0.34, lights: 12, beam: '#8dff3c' } as const;
 
 let saucer: MeshData | null = null;
 export function saucerMesh(): MeshData {
   if (saucer) return saucer;
   const b = new MeshBuilder({ ink: 'ufo' });
   const { r, under, over, dome } = SAUCER;
-  const air = airborne(PATTERN.metal);
-  // The hull: one smooth round from the hatch under it, out to the rim and up to the dome's foot.
-  b.setInk('hull').setColor('#c9ccd6').setPattern(air);
-  smoothLathe(b, [[0, 0], [r * 0.32, 0.005], [r * 0.7, under * 0.55], [r * 0.97, under * 0.95], [r, under + 0.01], [r * 0.93, under + over * 0.35], [r * 0.62, under + over * 0.8], [dome * 0.98, under + over]], { segments: 24, crease: 0.9 });
-  // The hatch underneath: a darker disc.
-  b.setInk('hatch').setColor('#6f7385');
-  b.lathe([[r * 0.3, 0.006], [0, 0.004]], { segments: 16 });
-  // The glass dome, and inside it a little green figure with big black eyes.
-  b.setInk('dome').setColor('#a9dcef').setPattern(airborne(PATTERN.glass));
-  smoothLathe(b, [[dome, under + over - 0.005], [dome * 0.92, under + over + dome * 0.42], [dome * 0.62, under + over + dome * 0.78], [0, under + over + dome * 0.9]], { segments: 18, crease: 1.2 });
-  b.setInk('alien').setColor('#7ed36a').setPattern(air);
-  smoothBall(b, 0, under + over + dome * 0.55, 0.0, 0.085, 0.1, 0.085, 10, 6);
-  b.setInk('eyes').setColor(PALETTE.ink);
-  for (const s of [-1, 1]) smoothBall(b, s * 0.035, under + over + dome * 0.58, 0.07, 0.022, 0.03, 0.012, 6, 4);
+  const metal = airborne(PATTERN.metal);
+  // The underside: a darker, ribbed bowl (rings of two tones) down to the hatch.
+  b.setInk('under').setColor('#8b90a3').setPattern(metal);
+  smoothLathe(b, [[r * 0.3, 0.012], [r * 0.55, under * 0.3], [r * 0.82, under * 0.72], [r * 0.985, under * 0.97]], { segments: 28, crease: 0.9 });
+  b.setColor('#a8adbe');
+  for (const k of [0.46, 0.66]) b.lathe([[r * (k + 0.03), under * (k * 1.15 - 0.2) + 0.004], [r * (k - 0.03), under * (k * 1.15 - 0.26) + 0.004]], { segments: 28 });
+  // The rim band: red, self-lit (it glows at night).
+  b.setInk('rim').setColor('#e2524a').setPattern(airborne(PATTERN.glow));
+  b.lathe([[r * 0.985, under * 0.97], [r * 1.0, under + 0.02], [r * 0.985, under + 0.045]], { segments: 28 });
+  // The upper hull: bright silver, from the rim up to the dome's foot.
+  b.setInk('hull').setColor('#dfe2ea').setPattern(metal);
+  smoothLathe(b, [[r * 0.985, under + 0.045], [r * 0.9, under + over * 0.32], [r * 0.66, under + over * 0.75], [dome * 1.08, under + over]], { segments: 28, crease: 0.9 });
+  // The dome's seat: a dark ring round its foot.
+  b.setInk('seat').setColor('#5d6275').setPattern(metal);
+  b.lathe([[dome * 1.1, under + over - 0.004], [dome * 1.1, under + over + 0.022], [dome * 0.99, under + over + 0.026]], { segments: 24 });
+  // The hatch: a lime glow underneath.
+  b.setInk('hatch').setColor(SAUCER.beam).setPattern(airborne(PATTERN.glow));
+  b.lathe([[r * 0.3, 0.012], [r * 0.22, 0.008], [0, 0.006]], { segments: 18 });
+  // The antenna: up out of the top of the dome (its tip is a light).
+  b.setInk('antenna').setColor('#5d6275').setPattern(metal);
+  b.lathe([[0.012, under + over + dome * 0.85], [0.01, under + over + dome + 0.17]], { segments: 6 });
   saucer = b.build();
   return saucer;
 }
 
+let domeM: MeshData | null = null;
+/** The glass dome: a pale translucent bubble (no ink, see-through), over the pilot. */
+export function domeMesh(): MeshData {
+  if (domeM) return domeM;
+  const b = new MeshBuilder({ ink: 'ufo-dome' });
+  const { under, over, dome } = SAUCER;
+  b.setInk('dome').setColor('#cfefff').setPattern(MIST);
+  smoothLathe(b, [[dome, under + over + 0.02], [dome * 0.93, under + over + dome * 0.45], [dome * 0.62, under + over + dome * 0.82], [0, under + over + dome * 0.93]], { segments: 22, crease: 1.3 });
+  domeM = b.build();
+  return domeM;
+}
+
+let alienM: MeshData | null = null;
+/** The pilot: shoulders, a big green head, two big black eyes (facing +Z). Origin at its seat. */
+export function alienMesh(): MeshData {
+  if (alienM) return alienM;
+  const b = new MeshBuilder({ ink: 'ufo-alien' });
+  b.setPattern(airborne(PATTERN.none));
+  b.setInk('body').setColor('#4fae45');
+  smoothBall(b, 0, 0.06, 0, 0.13, 0.09, 0.1, 10, 5);
+  b.setInk('head').setColor('#78e05f');
+  smoothBall(b, 0, 0.24, 0.01, 0.14, 0.15, 0.13, 12, 7);
+  b.setInk('eyes').setColor(PALETTE.ink);
+  for (const s of [-1, 1]) smoothBall(b, s * 0.06, 0.25, 0.115, 0.04, 0.055, 0.02, 8, 4);
+  alienM = b.build();
+  return alienM;
+}
+
 const lights: (MeshData | null)[] = [null, null];
-/** Half the rim's lights (every other one, from `half`): drawn in turn, they chase round. */
+/** Half the rim's lights (every other one, from `half`), and in half 0 the antenna's tip: drawn in turn, they chase. */
 export function lightsMesh(half: 0 | 1): MeshData {
   const had = lights[half];
   if (had) return had;
   const b = new MeshBuilder({ ink: `ufo-lights-${half}` });
-  const { r, under, lights: n } = SAUCER;
-  // Self-lit (they glow at dusk and by night), and in the air.
+  const { r, under, over, dome, lights: n } = SAUCER;
+  // Self-lit (radiant at dusk and night), and in the air.
   b.setPattern(airborne(PATTERN.glow));
+  const colours = ['#ffe14d', '#ff5f6d', '#5fe6ff', '#9dff5a'];
   for (let i = half; i < n; i += 2) {
     const a = (i / n) * Math.PI * 2;
-    b.setInk(`light${i}`).setColor(i % 4 < 2 ? '#ffe066' : '#ff8a5c');
-    smoothBall(b, Math.cos(a) * r * 0.985, under + 0.012, Math.sin(a) * r * 0.985, 0.06, 0.045, 0.06, 8, 4);
+    b.setInk(`light${i}`).setColor(colours[i % 4]!);
+    smoothBall(b, Math.cos(a) * r * 1.005, under + 0.022, Math.sin(a) * r * 1.005, 0.075, 0.055, 0.075, 8, 4);
+  }
+  if (half === 0) {
+    b.setInk('tip').setColor('#ff5f6d');
+    smoothBall(b, 0, under + over + dome + 0.19, 0, 0.04, 0.04, 0.04, 8, 4);
   }
   const m = b.build();
   lights[half] = m;
   return m;
 }
 
-let beam: MeshData | null = null;
-/** The cone from the hatch (r0, top, y = 0) down to the ground (r1, y = −1), and the pool of light at its foot. */
-export function beamMesh(): MeshData {
-  if (beam) return beam;
-  const b = new MeshBuilder({ ink: 'ufo-beam' });
-  // A soft wash (MIST): translucent, never inked, fading where its sides turn edge-on (soft edges).
-  b.setColor('#eefab0').setPattern(MIST).setInk('beam');
-  const r0 = SAUCER.r * 0.3, r1 = SAUCER.r * 0.85, sides = 16;
+/** Quads round an upright band from (r0 at y0) to (r1 at y1), all tractor light, `edge` from e0 to e1. */
+function band(b: MeshBuilder, r0: number, y0: number, r1: number, y1: number, e0: number, e1: number, sides: number): void {
   for (let i = 0; i < sides; i++) {
     const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
-    // Fading toward the ground (edge 0 at the hatch, 0.55 at the foot: still there where it lands).
-    b.quad([Math.cos(a) * r0, 0, Math.sin(a) * r0], [Math.cos(a) * r1, -1, Math.sin(a) * r1], [Math.cos(c) * r1, -1, Math.sin(c) * r1], [Math.cos(c) * r0, 0, Math.sin(c) * r0], { edge: [0, 0.55, 0.55, 0] });
+    b.quad([Math.cos(a) * r0, y0, Math.sin(a) * r0], [Math.cos(a) * r1, y1, Math.sin(a) * r1], [Math.cos(c) * r1, y1, Math.sin(c) * r1], [Math.cos(c) * r0, y0, Math.sin(c) * r0], { edge: [e0, e1, e1, e0] });
   }
-  beam = b.build();
-  return beam;
+}
+
+/** The beam's radius at the hatch and at the ground. */
+export const BEAM = { r0: SAUCER.r * 0.3, r1: SAUCER.r * 0.95 } as const;
+
+let cone: MeshData | null = null;
+export function coneMesh(): MeshData {
+  if (cone) return cone;
+  const b = new MeshBuilder({ ink: 'ufo-cone' });
+  b.setColor(SAUCER.beam).setPattern(PATTERN.beam).setInk('cone');
+  band(b, BEAM.r0, 0, BEAM.r1, -1, 0, 0.45, 20);
+  cone = b.build();
+  return cone;
+}
+
+let rings: MeshData | null = null;
+/** Four bright bands round the cone, a quarter of its length apart (the top one at −0.06). */
+export function ringsMesh(): MeshData {
+  if (rings) return rings;
+  const b = new MeshBuilder({ ink: 'ufo-rings' });
+  b.setColor('#d8ffa8').setPattern(PATTERN.beam).setInk('rings');
+  for (let k = 0; k < 4; k++) {
+    const y = -0.06 - k * 0.25;
+    const r = BEAM.r0 + (BEAM.r1 - BEAM.r0) * -y;
+    band(b, r * 1.02, y + 0.03, r * 1.02, y - 0.03, 0, 0, 20);
+  }
+  rings = b.build();
+  return rings;
 }
 
 let pool: MeshData | null = null;
-/** The round pool of light the beam lays on the ground (radius 1, flat, fading to its edge). */
+/** The pool of light on the ground (radius 1, bright in the middle) and its spill round about (to radius 2.4, faint). */
 export function poolMesh(): MeshData {
   if (pool) return pool;
   const b = new MeshBuilder({ ink: 'ufo-pool' });
-  b.setColor('#f4ffc4').setPattern(MIST).setInk('pool');
-  const sides = 20;
+  b.setColor(SAUCER.beam).setPattern(PATTERN.beam).setInk('pool');
+  const sides = 24;
   for (let i = 0; i < sides; i++) {
     const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
-    b.tri([0, 0, 0], [Math.cos(c), 0, Math.sin(c)], [Math.cos(a), 0, Math.sin(a)], { edge: [0.2, 0.95, 0.95] });
+    // Facing up (counter-clockwise seen from above).
+    b.tri([0, 0, 0], [Math.cos(c), 0, Math.sin(c)], [Math.cos(a), 0, Math.sin(a)], { edge: [0, 0.35, 0.35] });
+    b.quad([Math.cos(a), 0, Math.sin(a)], [Math.cos(c), 0, Math.sin(c)], [Math.cos(c) * 3, 0, Math.sin(c) * 3], [Math.cos(a) * 3, 0, Math.sin(a) * 3], { edge: [0.55, 0.55, 1, 1] });
   }
   pool = b.build();
   return pool;
 }
 
+let rim: MeshData | null = null;
+/** The pool's rim: a bright flat ring at radius 1 (scaled to pulse). */
+export function rimMesh(): MeshData {
+  if (rim) return rim;
+  const b = new MeshBuilder({ ink: 'ufo-rim' });
+  b.setColor('#d8ffa8').setPattern(PATTERN.beam).setInk('rim');
+  const sides = 28;
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
+    b.quad([Math.cos(a) * 0.9, 0.01, Math.sin(a) * 0.9], [Math.cos(c) * 0.9, 0.01, Math.sin(c) * 0.9], [Math.cos(c) * 1.05, 0.01, Math.sin(c) * 1.05], [Math.cos(a) * 1.05, 0.01, Math.sin(a) * 1.05], { edge: [0, 0, 0, 0] });
+  }
+  rim = b.build();
+  return rim;
+}
+
+let motes: MeshData | null = null;
+/** Sparkles in the beam: little four-pointed stars up a unit column inside the cone (moved up it, wrapping). */
+export function motesMesh(): MeshData {
+  if (motes) return motes;
+  const b = new MeshBuilder({ ink: 'ufo-motes' });
+  b.setColor('#f4ffd0').setPattern(airborne(PATTERN.glow));
+  for (let i = 0; i < 9; i++) {
+    const y = -(i + 0.5) / 9;
+    const rr = (BEAM.r0 + (BEAM.r1 - BEAM.r0) * -y) * (0.25 + ((i * 37) % 10) / 16);
+    const a = i * 2.39;
+    b.setInk(`mote${i}`);
+    smoothBall(b, Math.cos(a) * rr, y, Math.sin(a) * rr, 0.022, 0.022, 0.022, 6, 3);
+  }
+  motes = b.build();
+  return motes;
+}
+
 let shadow: MeshData | null = null;
-/** A round shadow on the ground, radius 1 (scaled), flat. */
+/** A ring of shadow on the ground, outer radius 1 (scaled), flat. */
 export function ufoShadowMesh(): MeshData {
   if (shadow) return shadow;
   const b = new MeshBuilder({ ink: 'ufo-shadow' });
-  b.setPattern(airborne(PATTERN.none)).setInk('shadow').setColor('#8c8699');
-  b.lathe([[1, 0], [1, 0.004], [0, 0.006]], { segments: 20 });
+  b.setPattern(airborne(PATTERN.none)).setInk('shadow').setColor('#aaa5b6');
+  b.lathe([[1, 0], [1, 0.004], [0.62, 0.004], [0.62, 0]], { segments: 24 });
   shadow = b.build();
   return shadow;
 }

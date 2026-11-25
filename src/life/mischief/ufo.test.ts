@@ -4,6 +4,7 @@
 // the person on their feet. The app's own wiring, no renderer.
 
 import { describe, expect, test } from 'vitest';
+import { key } from '@/core/grid';
 import { buildScenario } from '@/scenario';
 import { findScenario } from '@/scenario/discover';
 import { generateTerrain, initialWorld } from '@/terrain/terrain';
@@ -104,4 +105,28 @@ describe('the UFO', () => {
     expect(crowd.people.filter((p) => p.mode === 'thrown').length).toBe(0);
     void UFO;
   }, 120_000);
+
+  test('the town changing mid-abduction (a house built, the dressing again): it carries on and brings the same person back', () => {
+    const t = grown();
+    const crowd = crowdOf(t.stage)!;
+    const ufos = ufosOf(t.stage)!;
+    const before = ids(t);
+    expect(ufos.call(30.5, 0.8, 22.5)).toBe(true);
+    for (let i = 0; i < 100 && !ufos.saucers.some((s) => s.phase === 'lift'); i++) t.run(0.1);
+    const taken = ufos.saucers[0]!.person!;
+    // A house built elsewhere in the middle of it.
+    const shape = t.game.shape;
+    const free = [...shape.terrain.height.keys()].find((i) => shape.terrain.height[i]! > 0 && !shape.kinds.has(key(i % 48, shape.terrain.height[i]!, Math.floor(i / 48))) && (i % 48) > 4 && (i % 48) < 12)!;
+    const x = free % 48, z = Math.floor(free / 48);
+    t.game.edit({ type: 'placeBlock', cell: key(x, shape.terrain.height[free]!, z), kind: 'house', color: 'auto', from: null });
+    for (let i = 0; i < 1200 && ufos.saucers.length > 0; i++) t.run(0.1);
+    for (let i = 0; i < 300 && taken.mode === 'thrown'; i++) t.run(0.1);
+    expect(taken.mode).not.toBe('thrown');
+    expect(taken.visible).toBe(true);
+    expect(mischiefDrawn(t.stage)).toBe(0);
+    const after = ids(t);
+    expect(new Set(after).size).toBe(after.length);
+    for (const id of before) expect(after).toContain(id);
+    void crowd;
+  }, 180_000);
 });
