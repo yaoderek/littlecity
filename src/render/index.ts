@@ -1239,6 +1239,18 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   resizeTargets();
   renderer.setSize(width, height, false);
 
+  // The first frame's shaders are handed to the driver now, and linked by it while the town is worked out;
+  // each used to be asked for in the first frame, one after the other, and waited for there. (A program is
+  // keyed by its shader and defines alone, so any mesh and any target will do. The page's own waits for the
+  // script that made the view to say how sharp to draw: that is in its defines.)
+  const compile = (...materials: THREE.Material[]): void => {
+    const all = new THREE.Scene();
+    for (const m of materials) all.add(screenMesh(m));
+    renderer.compile(all, camera);
+  };
+  compile(surfaceMaterial, moverMaterial, overlayMaterial, shadeMaterial, heightMaterial, paperMaterial);
+  queueMicrotask(() => compile(compositeMaterial, ...(halfInk ? [inkMaterial] : [])));
+
   let drawCalls = 0;
   let triangles = 0;
 
