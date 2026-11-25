@@ -575,14 +575,18 @@ function draw(st: State, s: Saucer): void {
 
 /** A flat card at (x, y, z) turned square to the camera (the app's view), at scale `sc`. */
 /**
- * Whether the quality governor (src/render/quality.ts) has had to give up the full ink on this device (the
- * half-resolution ink or fewer pixels than the screen): a weak one. Read off the app's view; false with none.
+ * Whether this is a weak device for drawing: a phone-sized screen, or one where the quality governor
+ * (src/render/quality.ts) has had to give up the full ink (half-resolution ink, or fewer pixels than the
+ * screen). Read off the app's view and the window; false with neither (tests).
  */
 function weakDevice(): boolean {
   const view = (globalThis as { __lc?: { view?: { quality?(): { level: number; levels: { halfInk: boolean; rough?: true }[] } } } }).__lc?.view;
   const q = view?.quality?.();
   const l = q?.levels[q.level];
-  return !!l && (l.halfInk || l.rough === true);
+  if (l && (l.halfInk || l.rough === true)) return true;
+  // A phone (a small screen): its graphics are the weakest the game meets, at three device pixels to one.
+  const g = globalThis as { innerWidth?: number; innerHeight?: number };
+  return typeof g.innerWidth === 'number' && typeof g.innerHeight === 'number' && Math.min(g.innerWidth, g.innerHeight) < 600;
 }
 
 const card = new Array<number>(16).fill(0);

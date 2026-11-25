@@ -57,6 +57,7 @@ try {
       const ufo = window.__lcUfo?.saucers.map((s) => s.phase).join(',') ?? '';
       return {
         frames: g.length, median: at(0.5), p95: at(0.95), p99: at(0.99), worst: g[g.length - 1] ?? 0, long: g.filter((x) => x > 50).length,
+        movers: window.__lcMovers ? `${window.__lcMovers.count}/${window.__lcMovers.garbage}` : '',
         calls: window.__lc.view.stats().drawCalls, geometries: info?.memory.geometries, textures: info?.memory.textures, programs: info?.programs?.length, ufo,
       };
     });
@@ -70,7 +71,7 @@ try {
       const n = passes['frames#'] || 1;
       console.log(`   passes over ${n} frames: ` + Object.keys(passes).filter((k) => !k.endsWith('#')).map((k) => `${k} ${(passes[k] / n).toFixed(1)} ms (${passes[k + '#']}x)`).join(', '));
     }
-    console.log(`${label.padEnd(10)} ${r.frames} frames  median ${r.median.toFixed(1)}  p95 ${r.p95.toFixed(1)}  p99 ${r.p99.toFixed(1)}  worst ${r.worst.toFixed(0)} ms  long(>50) ${r.long}  level ${levels.join(' ')}  draws ${r.calls} geo ${r.geometries} tex ${r.textures} prog ${r.programs}  [${r.ufo}]`);
+    console.log(`${label.padEnd(10)} ${r.frames} frames  median ${r.median.toFixed(1)}  p95 ${r.p95.toFixed(1)}  p99 ${r.p99.toFixed(1)}  worst ${r.worst.toFixed(0)} ms  long(>50) ${r.long}  level ${levels.join(' ')}  movers ${r.movers} (vertices/retired)  draws ${r.calls} geo ${r.geometries} tex ${r.textures} prog ${r.programs}  [${r.ufo}]`);
     return r;
   };
   // --zoom: the camera in close over where it will come (a phone player zoomed in on a street).
@@ -80,6 +81,8 @@ try {
   await sample('before', windowS);
   for (let i = 0; i < calls; i++) {
     await page.evaluate(() => window.__lcUfo.call(30.5, 0.8, 22.5));
+    // The click and the flight in (the frame of the click among them).
+    await sample(`arrive ${i + 1}`, 2);
     // In over the spot first (2.4 s), then the window is taken with its beam on.
     await page.waitForFunction(() => window.__lcUfo.saucers.some((s) => s.phase === 'beam' || s.phase === 'lift' || s.phase === 'seek'), null, { timeout: 120_000 });
     await sample(`call ${i + 1}`, Math.min(windowS, 3));
