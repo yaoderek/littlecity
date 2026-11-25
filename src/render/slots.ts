@@ -112,6 +112,10 @@ export class SlotTable {
     }
   }
 
+  isVisible(slot: number): boolean {
+    return !this.hidden[slot];
+  }
+
   setParams(slot: number, a: number, b = 0, c = 0, d = 0): void {
     const k = slot * FLOATS + 12;
     const t = this.data;

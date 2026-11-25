@@ -144,6 +144,8 @@ interface DrawnLayer {
 }
 interface DrawnItem {
   hash: number;
+  /** Its mesh is in a pool. */
+  drawn: boolean;
   /** True for actors: drawn from the movers pool. */
   mover: boolean;
   slot: number;
@@ -715,6 +717,12 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   let pending = new Set<StructureId>();
   /** A setTown or setDressing ran since the last frame: that frame does no deferred rebuilding. */
   let busy = false;
+  /**
+   * Items not drawn yet: an item's mesh is made when it is first seen, not when it is planned. The
+   * festival's lights wait a year for the festival and the plan's own people are never seen (life draws
+   * its own): together a fifth of a town's vertices, in every pass of every frame.
+   */
+  const unseen = new Map<string, { item: Prop | Actor; span: number }>();
   let spawnCounter = 0;
   let ghostKeys: string[] = [];
   let ghostSlots: number[] = [];
@@ -828,6 +836,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       slots.release(it.slot);
     }
     items.clear();
+    unseen.clear();
     anchorFrames.clear();
     layout = null;
   };
@@ -1001,6 +1010,22 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   const noRelease = (): void => {};
   const itemHandle = (id: string, entry: DrawnItem): InstanceHandle => makeHandle(() => (items.get(id) === entry ? entry.slot : 0), () => entry.base, noRelease);
 
+  const drawItem = (it: DrawnItem, item: Prop | Actor, span: number): void => {
+    const mesh = propOutput(item, it.mover ? 'actor' : 'prop', span).mesh;
+    (it.mover ? movers : dynamic).pool.put(`i:${item.id}`, it.hash, mesh, it.slot);
+    slots.setKind(it.slot, airOf(mesh) ? SLOT_AIR : SLOT_GROUNDED);
+    it.drawn = true;
+  };
+  /** Draws what has come to be seen since it was planned. */
+  const drawSeen = (): void => {
+    for (const [id, { item, span }] of unseen) {
+      const it = items.get(id);
+      if (it && !slots.isVisible(it.slot)) continue;
+      unseen.delete(id);
+      if (it) drawItem(it, item, span);
+    }
+  };
+
   /**
    * `onlyMoved` (a drain's sync, with no life.sync after it): an item whose mesh and place are as they
    * were keeps whatever pose and visibility life gave it.
@@ -1019,17 +1044,16 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       if (!it) {
         const mover = category === 'actor';
         const slot = slots.alloc(mover);
-        const entry: DrawnItem = { hash: NaN, mover, slot, base, handle: null as unknown as InstanceHandle };
+        const entry: DrawnItem = { hash: NaN, drawn: false, mover, slot, base, handle: null as unknown as InstanceHandle };
         entry.handle = itemHandle(item.id, entry);
         items.set(item.id, (it = entry));
       }
       const hash = item.hash * 31 + Math.round(span * 1000);
       const same = it.hash === hash && sameKeys(it.base, base);
       if (it.hash !== hash) {
-        const mesh = propOutput(item, category, span).mesh;
-        (it.mover ? movers : dynamic).pool.put(`i:${item.id}`, hash, mesh, it.slot);
-        slots.setKind(it.slot, airOf(mesh) ? SLOT_AIR : SLOT_GROUNDED);
         it.hash = hash;
+        if (it.drawn) drawItem(it, item, span);
+        else unseen.set(item.id, { item, span });
       }
       it.base = base;
       if (onlyMoved && same) return;
@@ -1045,6 +1069,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       (it.mover ? movers : dynamic).pool.remove(`i:${id}`);
       slots.release(it.slot);
       items.delete(id);
+      unseen.delete(id);
     }
     for (const k of partOutputs.keys()) if (!live.has(k)) partOutputs.delete(k);
   };
@@ -1228,6 +1253,13 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       rebuildLayout();
       syncDressing(nextDressing);
       endRebuild(t0);
+    },
+    drawSeen() {
+      if (unseen.size === 0) return;
+      const t0 = performance.now();
+      drawSeen();
+      rebuildMs += performance.now() - t0;
+      lastSpent = { ...spent };
     },
     setGhost(ghost: Ghost | null) {
       clearGhost();
@@ -1582,6 +1614,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
         inkUniforms.uPR.value = pixelRatio / 2;
       }
 
+      drawSeen();
       updateWind(signals);
       if (slots.generation !== slotGeneration) {
         slotGeneration = slots.generation;

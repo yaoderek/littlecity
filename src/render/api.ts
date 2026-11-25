@@ -106,6 +106,12 @@ export interface TownView {
   setTown(shape: ShapePlan, dressing: DressingPlan | null, opts?: { spread?: boolean | 'waiting' }): void;
   /** Delivers the dressing for the shape last passed to setTown. */
   setDressing(dressing: DressingPlan): void;
+  /**
+   * Makes the meshes of what the dressing just delivered shows. A prop or actor is drawn only once it is
+   * seen (life hides some as it syncs: the festival's lights, the plan's own people), so call this after
+   * life.sync to pay for it there; render() draws whatever is left.
+   */
+  drawSeen?(): void;
   setGhost(ghost: Ghost | null): void;
 
   getCamera(): CameraPose;

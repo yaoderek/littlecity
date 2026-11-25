@@ -451,6 +451,7 @@ function frame(now: number): void {
     busyFrames = BUSY_FRAMES;
     view.setDressing(ready.dressing);
     life.sync(ready);
+    view.drawSeen?.();
     ui?.dressed(ready.dressing);
     const t = performance.now();
     pace.done(t, t - dressFrom);

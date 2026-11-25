@@ -113,6 +113,19 @@ describe('the view', () => {
     expect((await settled()).thumb).toEqual(before.thumb);
   });
 
+  test('a prop that is never seen costs nothing: its mesh is made when it is first shown, and then it is the same picture', async () => {
+    await look(`window.__look.open('look-primitives', { ink: 'full', camera: 4 })`);
+    const seen = await settled();
+    await look(`window.__look.open('look-primitives', { ink: 'full', camera: 4 })`);
+    await look(`window.__look.props(false)`); // hidden before the first frame, as life hides the festival's lights
+    const hidden = await shaded();
+    expect(hidden.triangles).toBeLessThan(seen.triangles);
+    await look(`window.__look.props(true)`);
+    const shown = await shaded();
+    expect(shown.thumb).toEqual(seen.thumb);
+    expect(shown.triangles).toBe(seen.triangles);
+  });
+
   test('the ghost preview is drawn over the page and clears without a trace', async () => {
     await look(`window.__look.open('look-primitives', { ink: 'full', camera: 5 })`);
     const before = await settled();
