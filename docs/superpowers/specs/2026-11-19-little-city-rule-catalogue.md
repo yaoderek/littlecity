@@ -1272,6 +1272,16 @@ back.
   mischief is going on. Time held at noon does not stop them; held at night
   they wait. Each holds the act open: one undo puts it all back.
 
+- **LM03 · 2 · The UFO** (the Mischief drawer; run time, `src/life/mischief/ufo.system.ts`)
+  — a click → a saucer from beyond the edge (in 2.4 s), over the person out of
+  doors nearest the click within 8 cells (else anybody; else it searches 3.2
+  s and leaves), beam on 0.5 s, the lift (thrower.grab, errand fallen through,
+  a hat or load knocked loose; rising faster as it goes, about 3 s), in at the
+  hatch, off (1.6 s), away 20–40 s, back over a walkable spot 6+ cells from
+  where it took them, down the beam (2.4 s), let go 0.75 above the ground,
+  dizzy 3.5 s, up, home. At most 3 at once. Undo, a called-off act, a new or
+  opened town: all gone at once, the person set on their feet.
+
 ## U — Urban fill
 
 Rules that make leftover and in-between space into something, the way real

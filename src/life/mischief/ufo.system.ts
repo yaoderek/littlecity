@@ -435,13 +435,16 @@ function draw(st: State, s: Saucer): void {
 }
 
 /** A flat card at (x, y, z) turned square to the camera (the app's view), at scale `sc`. */
+const card = new Array<number>(16).fill(0);
 function facing(x: number, y: number, z: number, sc: number, jig: number): number[] {
   const view = (globalThis as { __lc?: { view?: { getCamera?(): { yaw: number; pitch: number }; getEyeCamera?(): { yaw: number; pitch: number } | null } } }).__lc?.view;
   const deg = Math.PI / 180;
   const e = view?.getEyeCamera?.();
   const cam = e ? { yaw: e.yaw * deg, pitch: -e.pitch * deg } : view?.getCamera ? { yaw: view.getCamera().yaw * deg, pitch: view.getCamera().pitch * deg } : { yaw: 45 * deg, pitch: 35 * deg };
   const c = Math.cos(cam.yaw), sn = Math.sin(cam.yaw), ct = Math.cos(cam.pitch), st = Math.sin(cam.pitch);
-  return [c * sc, 0, -sn * sc, 0, -sn * st * sc, ct * sc, -c * st * sc, 0, sn * ct * sc, st * sc, c * ct * sc, 0, x, y + jig, z, 1];
+  const v = [c * sc, 0, -sn * sc, 0, -sn * st * sc, ct * sc, -c * st * sc, 0, sn * ct * sc, st * sc, c * ct * sc, 0, x, y + jig, z, 1] as const;
+  for (let i = 0; i < 16; i++) card[i] = v[i]!;
+  return card;
 }
 
 function clear(st: State, stage: LifeStage): void {

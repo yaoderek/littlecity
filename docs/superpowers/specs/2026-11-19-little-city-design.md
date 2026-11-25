@@ -1166,6 +1166,25 @@ come back. Nothing destructive ever happens unless the player starts it.
   something carried overhead stop, look up and point; a load is knocked
   out of the hands and picked up again. Not yet: birds in the air, carts.
   (`src/ui/hand.ts`; catalogue LM02.)
+- **The UFO (Derek, 2026-11-24: "a UFO flies in and then sucks up a random
+  person with a ray beam, and the person flies around and says 'help!' as
+  he gets abducted. If there's no people to abduct it should just fly in
+  and then fly away").** A tool in the Mischief drawer: a click calls a
+  flying saucer (about a house wide, a domed silver disc with chasing rim
+  lights and a little green figure in its glass dome). It swoops in from
+  beyond the map's edge, stops over somebody out of doors near the click
+  (else anybody), and lets down a soft pale cone of light pooling on the
+  ground; they are taken off their feet, rise turning and kicking with a
+  "HELP!" balloon over them, a hat or what they carried dropping, people
+  near looking up; in through the hatch (never shrunk or faded), and off
+  over the edge. 20–40 s later it comes back over somewhere else in town,
+  beams them down, lets go a little above the ground; they land dizzy, get
+  up and walk home. With nobody about it searches the empty street with its
+  beam and leaves. Three at most at once (a fourth click is refused). A
+  nuke under a hovering saucer makes it drop its catch and go. Nothing
+  saved changes; undo or a new town ends it at once, the person on their
+  feet. Nothing is scaled with the camera's distance. (`src/life/mischief/
+  ufo.system.ts`, `ufo-art.ts`; catalogue LM03.)
 - **What is left.** A destroyed block becomes a **ruin**: a charred or
   broken shell of what it was, saved with the town (`Block.ruin`), still
   standing where it stood, no longer merged into a role or housing anyone.
