@@ -54,7 +54,9 @@ try {
       const g = [...window.__gaps].sort((a, b) => a - b);
       const at = (k) => g[Math.min(g.length - 1, Math.floor((g.length - 1) * k))] ?? 0;
       const info = window.__lcRenderer?.info;
-      const ufo = window.__lcUfo?.saucers.map((s) => s.phase).join(',') ?? '';
+      const ph = {};
+      for (const s of window.__lcUfo?.saucers ?? []) ph[s.phase] = (ph[s.phase] ?? 0) + 1;
+      const ufo = Object.entries(ph).map(([k, v]) => `${k}×${v}`).join(' ');
       return {
         frames: g.length, median: at(0.5), p95: at(0.95), p99: at(0.99), worst: g[g.length - 1] ?? 0, long: g.filter((x) => x > 50).length,
         movers: window.__lcMovers ? `${window.__lcMovers.count}/${window.__lcMovers.garbage}` : '',
@@ -88,7 +90,16 @@ try {
     await sample(`call ${i + 1}`, Math.min(windowS, 3));
     if (calls > 1) await page.waitForFunction(() => window.__lcUfo.saucers.every((s) => s.phase === 'gone' || s.phase === 'done') || window.__lcUfo.saucers.length === 0, null, { timeout: 60_000 });
   }
-  await page.waitForFunction(() => window.__lcUfo.saucers.every((s) => s.phase === 'gone') || window.__lcUfo.saucers.length === 0, null, { timeout: 60_000 });
+  // --burst 20: that many called at once (tapped in quick succession round one spot), measured while they hover.
+  if (flags.burst) {
+    await page.evaluate((n) => {
+      for (let i = 0; i < n; i++) window.__lcUfo.call(30.5 + ((i * 7) % 5) - 2, 0.8, 22.5 + ((i * 3) % 5) - 2);
+    }, Number(flags.burst));
+    await sample(`burst ${flags.burst}`, 3);
+    await page.waitForTimeout(2000);
+    await sample('hovering', 4);
+  }
+  await page.waitForFunction(() => window.__lcUfo.saucers.every((s) => s.phase === 'gone') || window.__lcUfo.saucers.length === 0, null, { timeout: 120_000 });
   await sample('after', windowS);
   await page.waitForTimeout(30000);
   await sample('later', windowS);

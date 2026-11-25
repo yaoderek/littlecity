@@ -43,15 +43,15 @@ export function saucerMesh(): MeshData {
   const metal = airborne(PATTERN.metal);
   // The underside: a darker, ribbed bowl (rings of two tones) down to the hatch.
   b.setInk('under').setColor('#8b90a3').setPattern(metal);
-  smoothLathe(b, [[r * 0.3, 0.012], [r * 0.55, under * 0.3], [r * 0.82, under * 0.72], [r * 0.985, under * 0.97]], { segments: 20, crease: 0.9 });
+  smoothLathe(b, [[r * 0.3, 0.012], [r * 0.55, under * 0.3], [r * 0.82, under * 0.72], [r * 0.985, under * 0.97]], { segments: 16, crease: 0.9 });
   b.setColor('#a8adbe');
-  for (const k of [0.46, 0.66]) b.lathe([[r * (k + 0.03), under * (k * 1.15 - 0.2) + 0.004], [r * (k - 0.03), under * (k * 1.15 - 0.26) + 0.004]], { segments: 20 });
+  for (const k of [0.46, 0.66]) b.lathe([[r * (k + 0.03), under * (k * 1.15 - 0.2) + 0.004], [r * (k - 0.03), under * (k * 1.15 - 0.26) + 0.004]], { segments: 16 });
   // The rim band: red, self-lit (it glows at night).
   b.setInk('rim').setColor('#e2524a').setPattern(airborne(PATTERN.glow));
-  b.lathe([[r * 0.985, under * 0.97], [r * 1.0, under + 0.02], [r * 0.985, under + 0.045]], { segments: 20 });
+  b.lathe([[r * 0.985, under * 0.97], [r * 1.0, under + 0.02], [r * 0.985, under + 0.045]], { segments: 16 });
   // The upper hull: bright silver, from the rim up to the dome's foot.
   b.setInk('hull').setColor('#dfe2ea').setPattern(metal);
-  smoothLathe(b, [[r * 0.985, under + 0.045], [r * 0.9, under + over * 0.32], [r * 0.66, under + over * 0.75], [dome * 1.08, under + over]], { segments: 20, crease: 0.9 });
+  smoothLathe(b, [[r * 0.985, under + 0.045], [r * 0.9, under + over * 0.32], [r * 0.66, under + over * 0.75], [dome * 1.08, under + over]], { segments: 16, crease: 0.9 });
   // The dome's seat: a dark ring round its foot.
   b.setInk('seat').setColor('#5d6275').setPattern(metal);
   b.lathe([[dome * 1.1, under + over - 0.004], [dome * 1.1, under + over + 0.022], [dome * 0.99, under + over + 0.026]], { segments: 18 });
@@ -86,7 +86,7 @@ export function alienMesh(): MeshData {
   b.setInk('body').setColor('#4fae45');
   smoothBall(b, 0, 0.06, 0, 0.13, 0.09, 0.1, 10, 5);
   b.setInk('head').setColor('#78e05f');
-  smoothBall(b, 0, 0.24, 0.01, 0.14, 0.15, 0.13, 12, 7);
+  smoothBall(b, 0, 0.24, 0.01, 0.14, 0.15, 0.13, 10, 6);
   b.setInk('eyes').setColor(PALETTE.ink);
   for (const s of [-1, 1]) smoothBall(b, s * 0.06, 0.25, 0.115, 0.04, 0.055, 0.02, 8, 4);
   alienM = b.build();
@@ -106,11 +106,11 @@ export function lightsMesh(half: 0 | 1): MeshData {
   for (let i = half; i < n; i += 2) {
     const a = (i / n) * Math.PI * 2;
     b.setInk(`light${i}`).setColor(colours[i % 4]!);
-    smoothBall(b, Math.cos(a) * r * 1.005, under + 0.022, Math.sin(a) * r * 1.005, 0.075, 0.055, 0.075, 8, 4);
+    smoothBall(b, Math.cos(a) * r * 1.005, under + 0.022, Math.sin(a) * r * 1.005, 0.075, 0.055, 0.075, 6, 3);
   }
   if (half === 0) {
     b.setInk('tip').setColor('#ff5f6d');
-    smoothBall(b, 0, under + over + dome + 0.19, 0, 0.04, 0.04, 0.04, 8, 4);
+    smoothBall(b, 0, under + over + dome + 0.19, 0, 0.04, 0.04, 0.04, 6, 3);
   }
   const m = b.build();
   lights[half] = m;
@@ -196,7 +196,7 @@ export function motesMesh(): MeshData {
     const rr = (BEAM.r0 + (BEAM.r1 - BEAM.r0) * -y) * (0.25 + ((i * 37) % 10) / 16);
     const a = i * 2.39;
     b.setInk(`mote${i}`);
-    smoothBall(b, Math.cos(a) * rr, y, Math.sin(a) * rr, 0.022, 0.022, 0.022, 6, 3);
+    smoothBall(b, Math.cos(a) * rr, y, Math.sin(a) * rr, 0.022, 0.022, 0.022, 4, 2);
   }
   motes = b.build();
   return motes;
@@ -208,7 +208,7 @@ export function ufoShadowMesh(): MeshData {
   if (shadow) return shadow;
   const b = new MeshBuilder({ ink: 'ufo-shadow' });
   b.setPattern(airborne(PATTERN.none)).setInk('shadow').setColor('#aaa5b6');
-  b.lathe([[1, 0], [1, 0.004], [0.62, 0.004], [0.62, 0]], { segments: 18 });
+  b.lathe([[1, 0], [1, 0.004], [0.62, 0.004], [0.62, 0]], { segments: 14 });
   shadow = b.build();
   return shadow;
 }
@@ -231,7 +231,7 @@ export function helpMesh(): MeshData {
   const h = 0.085, w = 0.017, step = h * 0.86;
   const rx = (text.length * step) / 2 + 0.06, ry = 0.1, cy = 0.2, t = 0.01;
   b.setInk('balloon').setColor(PALETTE.white).setPattern(PATTERN.none);
-  balloon(b, { rx, ry, cy, t, segments: 44, wobble: 0.08, seed: 11, tipX: -0.04, bow: 0.02 });
+  balloon(b, { rx, ry, cy, t, segments: 30, wobble: 0.08, seed: 11, tipX: -0.04, bow: 0.02 });
   b.setInk('word').setColor(PALETTE.redDark);
   const x0 = -(text.length * step - h * 0.2) / 2;
   for (const side of [0, Math.PI]) {
