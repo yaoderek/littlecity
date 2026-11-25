@@ -188,6 +188,8 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   renderer.autoClear = false;
   renderer.setClearColor(0x000000, 0);
   renderer.info.autoReset = false;
+  // A debug handle for measuring what the renderer holds (tools, browser tests): geometries, textures, programs.
+  (globalThis as { __lcRenderer?: THREE.WebGLRenderer }).__lcRenderer = renderer;
 
   let width = Math.max(1, canvas.clientWidth || canvas.width || 1);
   let height = Math.max(1, canvas.clientHeight || canvas.height || 1);
@@ -696,6 +698,8 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   const ghostScene = new THREE.Scene().add(dynamic.addView(ghostMaterial));
   const ghostPostScene = new THREE.Scene().add(screenMesh(ghostComposite));
   const allPools = [...chunkPools.values(), dynamic, ...moverPools];
+  // The debug handle on the moving things' pool (tools): vertices drawn, and how many of them are retired.
+  (globalThis as { __lcMovers?: { count: number; garbage: number } }).__lcMovers = movers.pool;
   const chunkKeyOf = (x: number, z: number): string => `${Math.floor(x / CHUNK)}:${Math.floor(z / CHUNK)}`;
   // Shaping the land: raised and dug columns bounce and sink for a moment (ground-motion.ts).
   const groundMotion = createGroundMotion(dynamic.pool, slots, (cols, plan) => buildTerrainColumns(cols, plan).build());
