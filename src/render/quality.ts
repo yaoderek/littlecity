@@ -22,6 +22,14 @@
 // 1366 x 768 window with no graphics card stayed at four times its pixels, 1.3 frames a second.) Below
 // the levels that look right there are now two rough ones, fewer pixels than the screen has: soft, and
 // only for a device that would otherwise not be playable.
+//
+// Not every slow frame is slow drawing. A phone in Low Power Mode or a laptop on a battery saver is held
+// to 30 a second whatever is drawn; a busy page is late for its own work. Going down buys nothing there,
+// and the picture was given away for it: M3 Max and M4 machines and iPhones at a steady 30, not one long
+// frame, at the roughest levels, and kept there (found 2026-11-25 in the live numbers). So going down is
+// an attempt: it starts from a level and a pace, and if the bottom of it is no faster, the view goes back
+// to where it was and that pace is taken as the device's own. And a stall that passes (a lot happening
+// at once) goes back to where it was in one step, not a level every ten seconds.
 
 export interface Quality {
   /** Device pixels per CSS pixel the page is drawn at. */
@@ -125,8 +133,13 @@ export const GOVERNOR = {
   /** Slower than this, two levels at once; slower than that, straight to the last one, without waiting for motion. */
   crawl: 50,
   stall: 100,
-  /** Rough levels are gone down to only for a median frame longer than this (33 a second and sharp beats 60 and soft). */
-  roughAt: 30,
+  /** Rough levels are gone down to only for a median frame longer than this (30 a second and sharp beats 60 and soft; and 30 is what a battery saver allows). */
+  roughAt: 36,
+  /** Going down was worth it if the median frame is at most this much of what it was, or the long frames this much of theirs. */
+  worth: 0.85,
+  worthLong: 0.5,
+  /** The device's own pace (found by going down for nothing) holds while the median is within this much of it. */
+  ownPace: 1.2,
   /** A window is judged on at least this many frames, however long they take. */
   fewest: 5,
   /** Frames in which the page itself was busy are judged only when there are no others, and only as hopeless: longer than this, its own work taken off. */
@@ -134,7 +147,7 @@ export const GOVERNOR = {
   /** Fast: the median and the 90th percentile under these (a steady 60, or better), and hardly a long frame. */
   fastMedian: 17.5,
   fastP90: 20,
-  fastShare: 0.03,
+  fastShare: 0.08,
   /** A level just tried: for this long after it settles, one slow window sends it straight back. */
   trial: 12_000,
   /** Windows in a row: slow to step down, fast to try a level up. */
@@ -175,18 +188,27 @@ export function createGovernor(levels: number, start = 0, rough: (level: number)
   let nextBackoff: number = GOVERNOR.backoff;
   /** The level now was come up to (not stepped down to, and not the one it started at). */
   let rose = false;
-  /** A change waiting for the picture to move; `up` when it is a try of the level above. */
+  /** A change waiting for the picture to move; `up` when it is a try of a level above. */
   let pending: { to: number; since: number; up: boolean; now?: boolean } | null = null;
+  /** Going down: from which level, and how long and how uneven the frames were there. */
+  let attempt: { from: number; median: number; long: number } | null = null;
+  /** Going down was for nothing: the pace (median frame, share of long ones) that is this device's own. */
+  let own: { median: number; long: number } | null = null;
+  /** Where an attempt that did help came from: tried again in one step once frames are fast (a stall that passed). */
+  let before: number | null = null;
+  /** It started below its sharpest, on somebody's word (last time's, or the device's): not yet known to be needed. */
+  let untested = start > 0;
 
   const medianOf = (xs: readonly number[]): number => [...xs].sort((a, b) => a - b)[xs.length >> 1] ?? 0;
-  /** What the window says, and its median frame. */
-  const judge = (): { verdict: 'slow' | 'fast' | 'ok'; median: number } => {
-    const ok = { verdict: 'ok', median: 0 } as const;
+  type Verdict = { verdict: 'slow' | 'fast' | 'ok'; median: number; long: number };
+  /** What the window says, its median frame and its share of long ones. */
+  const judge = (): Verdict => {
+    const ok: Verdict = { verdict: 'ok', median: 0, long: 0 };
     if (gaps.length < GOVERNOR.fewest) {
       // Not one quiet frame to go by: a device so slow that the last edit's work is always in the last
       // few frames. What the page did itself is known, and taken off; the rest is drawing.
       const median = medianOf(busyGaps);
-      return busyGaps.length >= GOVERNOR.fewest && median > GOVERNOR.busySlow ? { verdict: 'slow', median } : ok;
+      return busyGaps.length >= GOVERNOR.fewest && median > GOVERNOR.busySlow ? { verdict: 'slow', median, long: 0 } : ok;
     }
     // A pause now and then is a pause. Every other frame longer than one is a page that cannot keep up.
     const pauses = gaps.filter((g) => g > GOVERNOR.pause).length;
@@ -194,16 +216,27 @@ export function createGovernor(levels: number, start = 0, rough: (level: number)
     if (s.length < GOVERNOR.fewest) return ok;
     const median = s[s.length >> 1]!;
     const p90 = s[Math.floor(s.length * 0.9)]!;
+    if (own && median <= own.median * GOVERNOR.ownPace) {
+      // This device's own pace: no slower than it is anyway, and nothing to be had by going down.
+      const long = s.filter((g) => g > own!.median * GOVERNOR.longRatio).length / s.length;
+      if (long <= Math.max(GOVERNOR.slowShare, own.long * 1.5)) return { verdict: 'fast', median, long };
+    }
     const longAt = Math.min(GOVERNOR.longFrame, median * GOVERNOR.longRatio);
     const long = s.filter((g) => g > longAt).length / s.length;
-    if (median > GOVERNOR.slowMedian || long >= GOVERNOR.slowShare) return { verdict: 'slow', median };
-    return { verdict: median <= GOVERNOR.fastMedian && p90 <= GOVERNOR.fastP90 && long <= GOVERNOR.fastShare ? 'fast' : 'ok', median };
+    if (median > GOVERNOR.slowMedian || long >= GOVERNOR.slowShare) return { verdict: 'slow', median, long };
+    return { verdict: median <= GOVERNOR.fastMedian && p90 <= GOVERNOR.fastP90 && long <= GOVERNOR.fastShare ? 'fast' : 'ok', median, long };
   };
   /** The level to step down to from a window whose median frame was this long (the level now: nowhere to go). */
   const below = (median: number): number => {
     let to = median > GOVERNOR.stall ? levels - 1 : Math.min(levels - 1, level + (median > GOVERNOR.crawl ? 2 : 1));
     if (median <= GOVERNOR.roughAt) while (to > level && rough(to)) to--;
     return to;
+  };
+  const helped = (v: Verdict): boolean => {
+    if (!attempt) return true;
+    // Slow by its median: the median must have come down. Slow by its long frames only: those must have.
+    if (attempt.median > GOVERNOR.slowMedian) return v.median <= attempt.median * GOVERNOR.worth;
+    return v.median <= attempt.median * 1.1 && v.long <= attempt.long * GOVERNOR.worthLong;
   };
 
   return {
@@ -234,7 +267,8 @@ export function createGovernor(levels: number, start = 0, rough: (level: number)
       if (busy) busyGaps.push(Math.max(0, gapMs - work));
       else gaps.push(gapMs);
       if (clock - windowStart < GOVERNOR.window || gaps.length + busyGaps.length < GOVERNOR.fewest) return null;
-      const { verdict, median } = judge();
+      const v = judge();
+      const { verdict, median } = v;
       const verySlow = verdict === 'slow' && median > GOVERNOR.verySlow;
       gaps = [];
       busyGaps = [];
@@ -251,13 +285,19 @@ export function createGovernor(levels: number, start = 0, rough: (level: number)
           // The level up was too much: back, and wait longer before the next try.
           pending = { to: trial.from, since: clock, up: false };
           trial = null;
+          own = null;
           noUpUntil = clock + nextBackoff;
           nextBackoff *= 2;
           slowRun = 0;
           return null;
         }
         const to = below(median);
-        if ((slowRun >= GOVERNOR.slowWindows || verySlow) && to > level) {
+        // Straight down takes two windows to believe: one may be a stall that is already over.
+        const sure = median > GOVERNOR.crawl ? slowRun >= 2 : slowRun >= GOVERNOR.slowWindows || verySlow;
+        if (!sure) return null;
+        if (to > level) {
+          untested = false;
+          attempt ??= { from: level, median, long: v.long };
           pending = { to, since: clock, up: false, now: median > GOVERNOR.crawl };
           slowRun = 0;
           // A level it had come back up to, that kept up for a while and no longer does (a level at
@@ -266,15 +306,37 @@ export function createGovernor(levels: number, start = 0, rough: (level: number)
             noUpUntil = clock + nextBackoff;
             nextBackoff *= 2;
           }
+        } else if (attempt) {
+          // The bottom, and still slow. Was it worth it?
+          if (!helped(v)) {
+            own = { median: Math.max(median, attempt.median), long: Math.max(v.long, attempt.long) };
+            if (attempt.from < level) pending = { to: attempt.from, since: clock, up: true };
+          }
+          attempt = null;
+          slowRun = 0;
+        } else if (untested) {
+          untested = false;
+          // Started at the bottom (remembered, or what the device says it is) and slow there: no telling
+          // yet whether the sharpness has anything to do with it. Up, to see.
+          own = { median, long: v.long };
+          slowRun = 0;
         }
         return null;
+      }
+      // (A pace that was the device's own, and is left well behind: a cap lifted.)
+      if (own && median > 0 && median < own.median * 0.7) own = null;
+      if (attempt && verdict !== 'ok') {
+        if (median > 0 && level > attempt.from && attempt.median > GOVERNOR.crawl) before = attempt.from;
+        attempt = null;
       }
       slowRun = 0;
       if (trial && clock > trial.until) trial = null;
       if (verdict === 'fast') {
         fastRun++;
         if (fastRun >= GOVERNOR.fastWindows && level > 0 && clock >= noUpUntil) {
-          pending = { to: level - 1, since: clock, up: true };
+          // After a stall: back to where it was, in one step. (Too much after all: the trial says so.)
+          pending = { to: before !== null && before < level ? before : level - 1, since: clock, up: true };
+          before = null;
           fastRun = 0;
         }
       } else fastRun = 0;
