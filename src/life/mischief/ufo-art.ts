@@ -56,7 +56,7 @@ export function lightsMesh(half: 0 | 1): MeshData {
   for (let i = half; i < n; i += 2) {
     const a = (i / n) * Math.PI * 2;
     b.setInk(`light${i}`).setColor(i % 4 < 2 ? '#ffe066' : '#ff8a5c');
-    smoothBall(b, Math.cos(a) * r * 0.985, under + 0.012, Math.sin(a) * r * 0.985, 0.045, 0.035, 0.045, 8, 4);
+    smoothBall(b, Math.cos(a) * r * 0.985, under + 0.012, Math.sin(a) * r * 0.985, 0.06, 0.045, 0.06, 8, 4);
   }
   const m = b.build();
   lights[half] = m;

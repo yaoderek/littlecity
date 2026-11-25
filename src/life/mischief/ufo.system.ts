@@ -415,7 +415,7 @@ function draw(st: State, s: Saucer): void {
     // The cone from the hatch to the ground (leaning while it searches): its −y axis runs to the foot.
     beam.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x, y, s.z, 1]);
     // A pale wash (brighter against the dark at night).
-    const brightness = (st.night ? 0.7 : 0.6) * s.beam;
+    const brightness = (st.night ? 0.85 : 0.6) * s.beam;
     beam.setParams(brightness);
     const r = SAUCER.r * 0.85;
     pool.setMatrix([r, 0, 0, 0, 0, 1, 0, 0, 0, 0, r, 0, s.x + ox, s.ground + 0.02, s.z + oz, 1]);
