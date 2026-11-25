@@ -18,6 +18,11 @@ VITE_BUILD="$SHA" npx vite build --base=/ --outDir "$OUT" --emptyOutDir >/dev/nu
 node tools/seo.mjs "$OUT"
 touch "$OUT/.nojekyll"
 echo littlecity.io > "$OUT/CNAME"
+# The site's repo has the same README (with its pictures) and license as this one; every publish
+# replaces the whole branch, so they go along each time.
+cp "$ROOT/README.md" "$ROOT/LICENSE" "$OUT/"
+mkdir -p "$OUT/docs/readme"
+cp "$ROOT"/docs/readme/*.jpg "$OUT/docs/readme/"
 cd "$OUT"
 git init -q -b gh-pages
 git add -A

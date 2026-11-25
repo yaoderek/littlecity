@@ -1946,3 +1946,10 @@ green; (5) "why does it return?" (the return was the orchestrator's
 idea, not his). → the UFO's agent (`a0dfec5cd5f0c15d7`), resumed, with
 the performance cause first. Nothing deployed since; whether to take
 the tool off the live site meanwhile is Derek's call (asked).
+
+**Derek's answers on the UFO (2026-11-25):** it stays on the live site
+as it is until he signs the fixes off locally; the saucer KEEPS
+returning the person (he chose that over them walking home or being
+gone). The agent was told to put the return back and apply the same
+fixes to it (clear of buildings, turquoise, no resources left behind).
+Running: the UFO's agent (round 3: the phone slowdown first).
