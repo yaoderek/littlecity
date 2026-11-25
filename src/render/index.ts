@@ -192,6 +192,8 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   renderer.autoClear = false;
   renderer.setClearColor(0x000000, 0);
   renderer.info.autoReset = false;
+  // A debug handle for measuring what the renderer holds (tools, browser tests): geometries, textures, programs.
+  (globalThis as { __lcRenderer?: THREE.WebGLRenderer }).__lcRenderer = renderer;
 
   let width = Math.max(1, canvas.clientWidth || canvas.width || 1);
   let height = Math.max(1, canvas.clientHeight || canvas.height || 1);
