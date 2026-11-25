@@ -73,7 +73,7 @@ export class PoolMesh {
     }
     this.geometry.setDrawRange(0, pool.count);
     const live = pool.count - pool.garbage > 0;
-    this.mesh.visible = live;
+    this.mesh.visible = live && pool.solidEntries > 0;
     this.overlay.visible = live && pool.beamEntries > 0;
     if (this.cull && live) {
       // Generous: lifted structures bounce and trees sway a little outside their rest bounds.

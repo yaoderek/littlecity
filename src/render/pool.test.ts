@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { identity, translation } from '@/core/mat4';
 import { EDGE_FAR, MeshBuilder, PATTERN } from '@/gen/mesh';
-import { EDGE_SCALE, VertexPool } from './pool';
+import { AIRBORNE, MIST } from '@/gen/airborne';
+import { EDGE_SCALE, hazy, VertexPool } from './pool';
 import { DEFAULT_PARAMS, SLOT_COLS, SlotTable } from './slots';
 
 const box = (x: number, color = '#ff8040', ink = 'a') => new MeshBuilder({ ink }).setColor(color).setPattern(PATTERN.brick).box([x, 0, 0], [x + 1, 1, 1]).build();
@@ -12,7 +13,7 @@ describe('VertexPool', () => {
     const pool = new VertexPool();
     const mesh = new MeshBuilder({ ink: 7 }).setColor([10, 20, 30]).setPattern(PATTERN.marble).setSway(0.5).setEdge(0.25).quad([0, 0, 1], [1, 0, 1], [1, 0, 0], [0, 0, 0]).build();
     const e = pool.put('q', 1, mesh, 5);
-    expect(e).toMatchObject({ offset: 0, count: 6, slot: 5, beams: false });
+    expect(e).toMatchObject({ offset: 0, count: 6, slot: 5, beams: false, solid: true });
     expect([...pool.position.subarray(0, 3)]).toEqual([0, 0, 1]);
     expect([...pool.normal.subarray(0, 4)]).toEqual([0, 127, 0, 64]); // up, sway 0.5
     expect([...pool.color.subarray(0, 4)]).toEqual([10, 20, 30, PATTERN.marble]);
@@ -103,11 +104,21 @@ describe('VertexPool', () => {
     const beam = new MeshBuilder().setPattern(PATTERN.beam).tri([0, 0, 0], [0, 0, 1], [1, 0, 0]).build();
     expect(pool.put('beam', 1, beam).beams).toBe(true);
     expect(pool.beamEntries).toBe(1);
+    // Nothing but beams: the page's own pass has nothing to draw here.
+    expect(pool.solidEntries).toBe(0);
     pool.put('beam', 2, box(0));
     expect(pool.beamEntries).toBe(0);
+    expect(pool.solidEntries).toBe(1);
     pool.put('beam', 3, beam);
     pool.remove('beam');
     expect(pool.beamEntries).toBe(0);
+    expect(pool.solidEntries).toBe(0);
+  });
+
+  test('a mesh that is smoke or a beam anywhere is hazy, in the air or not', () => {
+    const of = (pattern: number): boolean => hazy(new MeshBuilder().tri([0, 0, 0], [0, 0, 1], [1, 0, 0]).setPattern(pattern).tri([0, 0, 0], [0, 0, 1], [1, 0, 0]).build());
+    for (const p of [PATTERN.beam, MIST, PATTERN.beam | AIRBORNE, MIST | AIRBORNE]) expect(of(p)).toBe(true);
+    for (const p of [PATTERN.none, PATTERN.glow, PATTERN.planks, AIRBORNE]) expect(of(p)).toBe(false);
   });
 
   test('bounds cover everything put', () => {
