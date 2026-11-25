@@ -4,7 +4,7 @@
 // the person on their feet. The app's own wiring, no renderer.
 
 import { describe, expect, test } from 'vitest';
-import { key } from '@/core/grid';
+import { key, keyX, keyY, keyZ } from '@/core/grid';
 import { buildScenario } from '@/scenario';
 import { findScenario } from '@/scenario/discover';
 import { generateTerrain, initialWorld } from '@/terrain/terrain';
@@ -13,6 +13,8 @@ import type { Person } from '@/life/people/crowd';
 import { createTurmoil, type Turmoil } from '../../../tests/helpers/turmoil';
 import { mischiefDrawn } from './owned';
 import { UFO, ufosOf } from './ufo.system';
+import { SAUCER } from './ufo-art';
+import { throwerOf } from './thrown.system';
 
 function grown(): Turmoil {
   const built = buildScenario(findScenario('grown-town-1')!);
@@ -129,4 +131,91 @@ describe('the UFO', () => {
     for (const id of before) expect(after).toContain(id);
     void crowd;
   }, 180_000);
+
+  test('it goes where it was clicked: with nobody within reach of the click it takes nobody, however many are out elsewhere', () => {
+    const t = grown();
+    const crowd = crowdOf(t.stage)!;
+    const ufos = ufosOf(t.stage)!;
+    const out = crowd.people.filter((p) => p.visible && p.mode !== 'home' && p.mode !== 'visit');
+    expect(out.length).toBeGreaterThan(5);
+    // A spot on the island well away from everybody out now.
+    const h = t.game.shape.terrain.height;
+    let spot: [number, number] | null = null;
+    for (let z = 3; z < 45 && !spot; z++) for (let x = 3; x < 45 && !spot; x++) {
+      if (h[x + z * 48]! === 0) continue;
+      if (crowd.people.every((p) => Math.hypot(p.x - x - 0.5, p.z - z - 0.5) > UFO.near + 4)) spot = [x + 0.5, z + 0.5];
+    }
+    expect(spot).not.toBeNull();
+    expect(ufos.call(spot![0], 1, spot![1])).toBe(true);
+    t.run(0.1);
+    const seen = new Set<string>();
+    for (let i = 0; i < 200 && ufos.saucers.length > 0; i++) {
+      t.run(0.1);
+      const s = ufos.saucers[0];
+      if (!s) break;
+      seen.add(s.phase);
+      // It never leaves the spot to look elsewhere.
+      if (s.phase === 'seek' || s.phase === 'beam') expect(Math.hypot(s.x - spot![0], s.z - spot![1])).toBeLessThan(0.5);
+      expect(s.person).toBeNull();
+    }
+    expect(seen.has('seek')).toBe(true);
+    expect(seen.has('lift')).toBe(false);
+  }, 120_000);
+
+  test('it never passes through anything: its disc stays clear of buildings, towers and trees all the way, coming in beside the tallest', () => {
+    const t = grown();
+    const ufos = ufosOf(t.stage)!;
+    const shape = t.game.shape;
+    // The tallest buildings' cells (towers, the lighthouse), and the trees.
+    const tall = [...shape.kinds].filter(([, k]) => k !== 'tree').sort((a, b) => keyY(b[0]) - keyY(a[0])).slice(0, 3).map(([c]) => c);
+    const trees = [...shape.kinds].filter(([, k]) => k === 'tree').map(([c]) => c);
+    const inTree = (x: number, y: number, z: number): boolean => trees.some((c) => Math.abs(keyX(c) + 0.5 - x) < 0.5 && Math.abs(keyZ(c) + 0.5 - z) < 0.5 && y >= keyY(c) * 0.8 && y < keyY(c) * 0.8 + 1.9);
+    const problems: string[] = [];
+    for (const c of tall) {
+      expect(ufos.call(keyX(c) + 1.5, 1, keyZ(c) + 0.5)).toBe(true);
+      for (let i = 0; i < 900 && ufos.saucers.length > 0; i++) {
+        t.run(1 / 30);
+        const g = throwerOf(t.stage)!.ground!;
+        for (const s of ufos.saucers) {
+          if (s.phase === 'gone' || s.phase === 'done') continue;
+          // Round its rim and across its middle, its underside and its top.
+          for (let k = 0; k <= 8; k++) {
+            const a = (k / 8) * Math.PI * 2, r = k === 8 ? 0 : SAUCER.r;
+            const x = s.x + Math.cos(a) * r, z = s.z + Math.sin(a) * r;
+            for (const y of [s.y + 0.01, s.y + SAUCER.under + SAUCER.over]) {
+              if (g.blocked(x, y, z) || inTree(x, y, z)) problems.push(`saucer ${s.n} (${s.phase}) at ${x.toFixed(1)}, ${y.toFixed(2)}, ${z.toFixed(1)}`);
+            }
+          }
+        }
+      }
+    }
+    expect(problems.slice(0, 5)).toEqual([]);
+  }, 300_000);
+
+  test('ten UFOs called and gone (the return visits too) leave nothing behind: no handle out, nothing drawn', () => {
+    const t = grown();
+    const ufos = ufosOf(t.stage)!;
+    const crowd = crowdOf(t.stage)!;
+    const before = ids(t);
+    let called = 0;
+    for (let i = 0; i < 4000 && (called < 10 || ufos.saucers.length > 0); i++) {
+      if (called < 10 && ufos.saucers.length < UFO.most) {
+        const p = crowd.people.find((q) => q.visible && (q.mode === 'walk' || q.mode === 'linger'));
+        if (p && ufos.call(p.x, p.y, p.z)) called++;
+      }
+      t.run(0.1);
+      // Never more out than the saucers about (twelve handles each).
+      expect(ufos.live).toBe(ufos.saucers.length * 12);
+    }
+    expect(called).toBe(10);
+    expect(ufos.saucers.map((s) => `${s.phase} ${s.t.toFixed(1)}`)).toEqual([]);
+    expect(ufos.live).toBe(0);
+    // (The last ones set down are still dizzy, with stars: drawn by the thrown bodies' system until they get up.)
+    for (let i = 0; i < 400 && crowd.people.some((p) => p.mode === 'thrown'); i++) t.run(0.1);
+    t.run(1);
+    expect(mischiefDrawn(t.stage)).toBe(0);
+    expect(crowd.people.filter((p) => p.mode === 'thrown').map((p) => `${p.id} vis=${p.visible} ${throwerOf(t.stage)!.thrown.get(p)?.body.phase} beamed=${throwerOf(t.stage)!.beamed.has(p)}`)).toEqual([]);
+    const after = ids(t);
+    for (const id of before) expect(after).toContain(id);
+  }, 300_000);
 });

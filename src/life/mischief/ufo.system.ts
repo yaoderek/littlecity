@@ -28,9 +28,10 @@
 // person on their feet (the thrower's reset). Nothing saved changes. Every
 // handle goes through the owned stage.
 
-import { SEA_Y } from '@/core/grid';
+import { CELL_H, keyX, keyY, keyZ, SEA_Y } from '@/core/grid';
 import { rand } from '@/core/rand';
 import { defineSystem, type InstanceHandle, type LifeStage } from '../api';
+import type { ShapePlan } from '@/resolve/plan';
 import { crowdOf } from '../doors/table';
 import type { Crowd, Person } from '../people/crowd';
 import { nodeCentre, nodeHeight } from '../people/walk';
@@ -43,10 +44,10 @@ import { alienMesh, coneMesh, domeMesh, helpMesh, lightsMesh, motesMesh, poolMes
 export const UFO = {
   /** At most this many at once. */
   most: 3,
-  /** How near the click it looks for somebody first (cells). */
-  near: 8,
+  /** How near the click it looks for somebody (cells): a click on a street takes somebody on that street, never anybody from across the town. */
+  near: 4,
   /** Seconds: flying in, the beam coming on, the lift's longest, flying off, away, beaming back down, the empty search. */
-  arrive: 2.4,
+  arrive: 3,
   beamOn: 0.5,
   lift: 4,
   leave: 1.6,
@@ -54,9 +55,9 @@ export const UFO = {
   awayMax: 40,
   lower: 2.4,
   seek: 3.2,
-  /** How high it hovers over the highest roof near it, and how high it comes in and goes out. */
-  clear: 1.7,
-  high: 8,
+  /** How far its underside hovers above the highest thing round the spot (roofs, trees, towers), and how far above the island's tallest thing it cruises. */
+  clear: 0.6,
+  margin: 1.2,
   /** Seconds it spins up and tilts before it zips off. */
   prep: 0.55,
   /** How far from where it took them it brings them back (cells, at least). */
@@ -77,7 +78,9 @@ export interface Saucer {
   to: { x: number; y: number; z: number };
   /** The ground under its hover point. */
   ground: number;
-  /** Whoever it came for (picked, in the beam, aboard, coming back down), or null. */
+  /** Where it was called (it looks for somebody near here), and where it brings them back to. */
+  click: { x: number; z: number };
+  /** Whoever it took (in the beam, aboard, coming back down), or null. */
   person: Person | null;
   aboard: boolean;
   /** Seconds it stays away with them. */
@@ -102,7 +105,12 @@ export interface Ufos {
   readonly saucers: readonly Saucer[];
   /** A click with the UFO: one comes for somebody near (x, z). False if three are about already. */
   call(x: number, y: number, z: number): boolean;
+  /** Handles it has out now (0 when none is about: everything it drew has been given back). */
+  readonly live: number;
 }
+
+/** What a saucer is drawn with, built ahead (one a frame, after the town is shown), so a click builds nothing. */
+const MESHES = [saucerMesh, domeMesh, alienMesh, () => lightsMesh(0), () => lightsMesh(1), coneMesh, ringsMesh, poolMesh, rimMesh, motesMesh, ufoShadowMesh, helpMesh];
 
 const registry = new WeakMap<LifeStage, Ufos>();
 export function ufosOf(stage: LifeStage): Ufos | null {
@@ -127,6 +135,11 @@ interface State {
   off: () => void;
   ufos: Ufos;
   m: number[];
+  /** The town, for the trees (the solid map leaves them out), and the height it cruises at over it (worked out once a town). */
+  shape: ShapePlan | null;
+  cruise: number;
+  /** How many of its meshes are built ahead so far. */
+  warm: number;
 }
 
 /** Can the UFO take this person (anybody the Hand could pick up, out of doors)? */
@@ -135,41 +148,67 @@ function takeable(p: Person, list: readonly Saucer[]): boolean {
   return !list.some((s) => s.person === p);
 }
 
-/** Somebody out of doors: the nearest to (x, z) within UFO.near, else anybody (by the saucer's number). */
-function pickPerson(crowd: Crowd, list: readonly Saucer[], x: number, z: number, n: number): Person | null {
+/** Somebody out of doors: the nearest to (x, z) within UFO.near; nobody if none is that near. */
+export function pickPerson(crowd: Crowd, list: readonly Saucer[], x: number, z: number): Person | null {
   let best: Person | null = null, bestD: number = UFO.near;
-  const all: Person[] = [];
   for (const p of crowd.people) {
     if (!takeable(p, list)) continue;
-    all.push(p);
     const d = Math.hypot(p.x - x, p.z - z);
     if (d < bestD) {
       bestD = d;
       best = p;
     }
   }
-  if (best) return best;
-  if (all.length === 0) return null;
-  return all[Math.floor(rand(n, 'ufo-pick') * all.length)]!;
+  return best;
 }
 
-/** The highest thing near (x, z) (roofs included): it hovers clear above it. */
-function topNear(t: Thrower | null, x: number, z: number): { top: number; ground: number } {
+/** How tall a tree stands over its cell's floor (trunk and crown), world units. */
+const TREE = 2 * CELL_H + 0.3;
+
+/**
+ * The top of the highest thing within `r` of (x, z): the ground, buildings and their roofs, towers (the solid
+ * map) and trees (which the solid map flies through); and the ground right under (x, z). It hovers clear above it.
+ */
+export function skyTop(t: Thrower | null, shape: ShapePlan | null, x: number, z: number, r: number): { top: number; ground: number } {
   const g = t?.ground;
   if (!g) return { top: 1, ground: 0.8 };
   let top = 0;
-  for (const [ax, az] of [[0, 0], [0.8, 0], [-0.8, 0], [0, 0.8], [0, -0.8], [0.6, 0.6], [-0.6, -0.6]] as const) top = Math.max(top, g.surface(x + ax, z + az, 99).h);
+  for (let cz = Math.floor(z - r); cz <= Math.floor(z + r); cz++) {
+    for (let cx = Math.floor(x - r); cx <= Math.floor(x + r); cx++) {
+      // The nearest point of this cell to (x, z) within reach.
+      const nx = Math.max(cx, Math.min(cx + 1, x)), nz = Math.max(cz, Math.min(cz + 1, z));
+      if (Math.hypot(nx - x, nz - z) > r) continue;
+      // Its highest point (a pitched roof peaks in the middle).
+      top = Math.max(top, g.surface(cx + 0.5, cz + 0.5, 99).h, g.surface(nx, nz, 99).h);
+    }
+  }
+  if (shape) {
+    for (const [c, k] of shape.kinds) {
+      if (k !== 'tree') continue;
+      const cx = keyX(c) + 0.5, cz = keyZ(c) + 0.5;
+      if (Math.abs(cx - x) > r + 1 || Math.abs(cz - z) > r + 1 || Math.hypot(cx - x, cz - z) > r + 0.7) continue;
+      top = Math.max(top, keyY(c) * CELL_H + TREE);
+    }
+  }
   const s = g.surface(x, z, 99);
   return { top, ground: s.water ? SEA_Y : s.h };
 }
 
-/** A point beyond the map's edge, high up, on a side chosen by the saucer's number. */
-function edgePoint(_x: number, _z: number, n: number, what: string): { x: number; y: number; z: number } {
+/** The height it cruises at: clear above the tallest thing on the island (worked out once a town). */
+function cruiseOf(st: State, t: Thrower | null): number {
+  if (st.cruise > 0) return st.cruise;
+  const { top } = skyTop(t, st.shape, 24, 24, 36);
+  st.cruise = top + UFO.margin;
+  return st.cruise;
+}
+
+/** A point beyond the map's edge, at cruising height `y`, on a side chosen by the saucer's number. */
+function edgePoint(y: number, n: number, what: string): { x: number; y: number; z: number } {
   const side = Math.floor(rand(n, what) * 4);
   const along = 6 + rand(n, what, 'along') * 36;
   const out = -9;
   const p = side === 0 ? { x: along, z: out } : side === 1 ? { x: 48 - out, z: along } : side === 2 ? { x: along, z: 48 - out } : { x: out, z: along };
-  return { x: p.x, y: UFO.high, z: p.z };
+  return { x: p.x, y, z: p.z };
 }
 
 function phase(s: Saucer, p: UfoPhase): void {
@@ -177,33 +216,45 @@ function phase(s: Saucer, p: UfoPhase): void {
   s.t = 0;
 }
 
-/** Flies from `from` to `to` over `dur` seconds: fast, then a swoop down and a stop (in), or away rising and speeding up. */
-function fly(s: Saucer, dur: number, arriving: boolean, from = 0): number {
-  const u = Math.max(0, Math.min(1, (s.t - from) / dur));
-  const k = arriving ? easeOut(u) : u * u;
-  s.x = s.from.x + (s.to.x - s.from.x) * k;
-  s.z = s.from.z + (s.to.z - s.from.z) * k;
-  // The swoop: below the line on the way in, and up into the stop.
-  s.y = s.from.y + (s.to.y - s.from.y) * k - (arriving ? Math.sin(u * Math.PI) * 1.2 : 0);
+/**
+ * Flies from `from` to `to` over `dur` seconds, never through anything: coming in, level at its cruising height
+ * (above the island's tallest thing) until it is over the spot, then straight down to hover; going, straight up
+ * to its cruising height, then level away. `wait`: seconds held first (spinning up before it goes).
+ */
+function fly(s: Saucer, dur: number, arriving: boolean, wait = 0): number {
+  const u = Math.max(0, Math.min(1, (s.t - wait) / dur));
+  if (arriving) {
+    // Level and fast, slowing over the spot (the first 70 %), then down (the rest), settling.
+    const h = easeOut(Math.min(1, u / 0.7)), v = easeInOut(Math.max(0, (u - 0.7) / 0.3));
+    s.x = s.from.x + (s.to.x - s.from.x) * h;
+    s.z = s.from.z + (s.to.z - s.from.z) * h;
+    s.y = s.from.y + (s.to.y - s.from.y) * v;
+  } else {
+    // Up (the first 35 %), then away level, faster and faster.
+    const v = easeInOut(Math.min(1, u / 0.35)), h = Math.max(0, (u - 0.35) / 0.65) ** 2;
+    s.y = s.from.y + (s.to.y - s.from.y) * v;
+    s.x = s.from.x + (s.to.x - s.from.x) * h;
+    s.z = s.from.z + (s.to.z - s.from.z) * h;
+  }
   return u;
 }
 
 function create(st: State, stage: LifeStage, x: number, y: number, z: number): boolean {
   if (st.list.length >= UFO.most) return false;
-  const crowd = crowdOf(stage);
   const t = throwerOf(stage);
   const n = ++st.n;
-  const person = crowd ? pickPerson(crowd, st.list, x, z, n) : null;
-  const over = person ? { x: person.x, z: person.z } : { x, z };
-  const { top, ground } = topNear(t, over.x, over.z);
-  const from = edgePoint(over.x, over.z, n, 'in');
+  // To where it was called: it hovers clear of everything round there (the whole patch it may take somebody
+  // from, so it can glide over them without touching anything).
+  const { top, ground } = skyTop(t, st.shape, x, z, UFO.near + SAUCER.r);
+  const cruise = cruiseOf(st, t);
+  const from = edgePoint(cruise, n, 'in');
   const own = st.own.stage;
   const s: Saucer = {
-    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x: over.x, y: Math.max(top, ground) + UFO.clear, z: over.z }, ground,
-    person, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0,
+    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: Math.max(top, ground) + UFO.clear, z }, ground, click: { x, z },
+    person: null, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0,
     vx: 0, vz: 0, ax: 1, az: 0,
-    h: [saucerMesh(), domeMesh(), alienMesh(), lightsMesh(0), lightsMesh(1), coneMesh(), ringsMesh(), poolMesh(), rimMesh(), motesMesh(), ufoShadowMesh(), helpMesh()].map((m) => {
-      const h = own.spawnMesh(m, HIDE);
+    h: MESHES.map((mesh) => {
+      const h = own.spawnMesh(mesh(), HIDE);
       h.setVisible(false);
       return h;
     }),
@@ -226,18 +277,15 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
   switch (s.phase) {
     case 'in': {
       if (fly(s, UFO.arrive, true) < 1) break;
-      // Whoever it came for may have gone in meanwhile: anybody else near, else it searches.
-      if (!p || (!takeable(p, st.list.filter((o) => o !== s)) && !s.aboard)) {
-        s.person = crowd ? pickPerson(crowd, st.list.filter((o) => o !== s), s.x, s.z, s.n) : null;
-        if (s.person && Math.hypot(s.person.x - s.x, s.person.z - s.z) > 2.5) s.person = null;
-      }
+      // Over where it was called, it looks: the nearest person out of doors there; else it searches the spot and goes.
+      s.person = crowd ? pickPerson(crowd, st.list.filter((o) => o !== s), s.click.x, s.click.z) : null;
       phase(s, s.person ? 'beam' : 'seek');
       break;
     }
     case 'beam': {
       s.beam = Math.min(1, s.t / UFO.beamOn);
-      if (p && Math.hypot(p.x - s.x, p.z - s.z) < 3) {
-        // Over them as they stand (they may have walked a step).
+      if (p && Math.hypot(p.x - s.click.x, p.z - s.click.z) < UFO.near + 1) {
+        // Over them as they stand (at its hover height, clear of everything round the spot).
         s.x += (p.x - s.x) * Math.min(1, dt * 3);
         s.z += (p.z - s.z) * Math.min(1, dt * 3);
       }
@@ -273,7 +321,7 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         p.visible = false;
         phase(s, 'away');
         s.from = { x: s.x, y: s.y, z: s.z };
-        s.to = edgePoint(s.x, s.z, s.n, 'out');
+        s.to = edgePoint(cruiseOf(st, t), s.n, 'out');
       }
       break;
     }
@@ -286,7 +334,7 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.lean = 0;
       s.beam = 0;
       s.from = { x: s.x, y: s.y, z: s.z };
-      s.to = edgePoint(s.x, s.z, s.n, 'out');
+      s.to = edgePoint(cruiseOf(st, t), s.n, 'out');
       phase(s, 'leave');
       break;
     }
@@ -319,8 +367,8 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         phase(s, 'done');
         break;
       }
-      const { top, ground } = topNear(t, spot.x, spot.z);
-      s.from = edgePoint(spot.x, spot.z, s.n, 'back');
+      const { top, ground } = skyTop(t, st.shape, spot.x, spot.z, SAUCER.r + 0.5);
+      s.from = edgePoint(cruiseOf(st, t), s.n, 'back');
       s.x = s.from.x;
       s.y = s.from.y;
       s.z = s.from.z;
@@ -361,7 +409,7 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       t.beamed.delete(p);
       s.person = null;
       s.from = { x: s.x, y: s.y, z: s.z };
-      s.to = edgePoint(s.x, s.z, s.n, 'gone');
+      s.to = edgePoint(cruiseOf(st, t), s.n, 'gone');
       phase(s, 'leave');
       break;
     }
@@ -479,11 +527,14 @@ function draw(st: State, s: Saucer): void {
   if (shown) (half === 0 ? la : lb).setMatrix(m);
   // The beam: the cone, bands of light travelling along it, sparkles rising, the pool and its pulsing rim.
   const on = shown && s.beam > 0.01;
+  // A weak device (the governor has given up the full ink): the beam's cone and pool only (no bands,
+  // sparkles or rim: fewer layers of light laid over the page).
+  const rich = on && !weakDevice();
   cone.setVisible(on);
-  rings.setVisible(on);
+  rings.setVisible(rich);
   pool.setVisible(on);
-  rim.setVisible(on);
-  motes.setVisible(on);
+  rim.setVisible(rich);
+  motes.setVisible(rich);
   if (on) {
     const len = Math.max(0.2, y - s.ground);
     const lean = s.lean, ly = s.leanYaw;
@@ -509,7 +560,7 @@ function draw(st: State, s: Saucer): void {
   }
   // A ring of shadow under it, growing as it comes down.
   // (Not while the beam is on: its pool of light is there.)
-  shadow.setVisible(shown && s.y < UFO.high + 1 && !on);
+  shadow.setVisible(shown && !on);
   if (shown) {
     const above = Math.max(0.5, s.y - s.ground);
     const r = SAUCER.r * (0.45 + 0.5 * Math.min(1, 2.2 / above));
@@ -523,6 +574,17 @@ function draw(st: State, s: Saucer): void {
 }
 
 /** A flat card at (x, y, z) turned square to the camera (the app's view), at scale `sc`. */
+/**
+ * Whether the quality governor (src/render/quality.ts) has had to give up the full ink on this device (the
+ * half-resolution ink or fewer pixels than the screen): a weak one. Read off the app's view; false with none.
+ */
+function weakDevice(): boolean {
+  const view = (globalThis as { __lc?: { view?: { quality?(): { level: number; levels: { halfInk: boolean; rough?: true }[] } } } }).__lc?.view;
+  const q = view?.quality?.();
+  const l = q?.levels[q.level];
+  return !!l && (l.halfInk || l.rough === true);
+}
+
 const card = new Array<number>(16).fill(0);
 function facing(x: number, y: number, z: number, sc: number, jig: number): number[] {
   const view = (globalThis as { __lc?: { view?: { getCamera?(): { yaw: number; pitch: number }; getEyeCamera?(): { yaw: number; pitch: number } | null } } }).__lc?.view;
@@ -564,10 +626,16 @@ export default defineSystem<State>({
       off: () => {},
       ufos: null as unknown as Ufos,
       m: new Array<number>(16).fill(0),
+      shape: null,
+      cruise: 0,
+      warm: 0,
     };
     st.ufos = {
       get saucers() {
         return st.list;
+      },
+      get live() {
+        return st.own.live;
       },
       call(x, y, z) {
         if (st.list.length + st.calls.length >= UFO.most) return false;
@@ -597,15 +665,21 @@ export default defineSystem<State>({
           s.beam = 0;
           s.lean = 0;
           s.from = { x: s.x, y: s.y, z: s.z };
-          s.to = edgePoint(s.x, s.z, s.n, 'blown');
+          s.to = edgePoint(cruiseOf(st, throwerOf(ctx.stage)), s.n, 'blown');
           phase(s, 'leave');
         }
       }
     });
     return st;
   },
+  sync(st, next) {
+    st.shape = next.shape;
+    st.cruise = 0;
+  },
   update(st, dt, signals, ctx) {
     st.time += dt;
+    // Its meshes built ahead, one a frame (cached for good): the click that calls one builds nothing.
+    if (st.warm < MESHES.length && st.shape) MESHES[st.warm++]!();
     st.night = !signals.time.isDay;
     for (const c of st.calls) create(st, ctx.stage, c.x, c.y, c.z);
     st.calls = [];
