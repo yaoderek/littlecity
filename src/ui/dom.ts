@@ -40,9 +40,13 @@ export function iconButton(iconId: string, label: string, props: ElProps & { sho
   return button;
 }
 
+const iconsSet = new WeakMap<Element, string>();
 export function setIcon(button: HTMLElement, iconId: string): void {
   const holder = button.querySelector('.lc-btn-icon');
-  if (holder) holder.innerHTML = icon(iconId);
+  // The same picture again is left alone: the time of day's is set after every edit, and parsing and painting it is not free.
+  if (!holder || iconsSet.get(holder) === iconId) return;
+  iconsSet.set(holder, iconId);
+  holder.innerHTML = icon(iconId);
 }
 
 /**
