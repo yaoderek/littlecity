@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { createGame } from '@/app/game';
 import { generateTerrain, initialWorld } from '@/terrain/terrain';
 import { growTown } from '@/townmaker/index';
-import { clearingEdits, createGrowth, dressDue, onlyStartingTrees } from './growth';
+import { clearingEdits, createGrowth, dressDue, onlyStartingTrees, REST, RUN } from './growth';
 
 function setup(seed = 3) {
   const terrain = generateTerrain(seed);
@@ -35,7 +35,7 @@ describe('growth playback', () => {
 
   test('skip puts the rest down at once and shows it once', () => {
     const { game, edits, shows } = setup();
-    const growth = createGrowth(game);
+    const growth = createGrowth(game, { clock: () => 0 });
     growth.start(edits);
     growth.tick(0);
     growth.tick(200);
@@ -47,6 +47,71 @@ describe('growth playback', () => {
     full.game.editAll(clearingEdits(full.game.world));
     full.game.editAll(edits);
     expect(game.world.blocks.size).toBe(full.game.world.blocks.size);
+  });
+
+  /** A device on which showing the town takes `ms`. */
+  function slow(ms: number) {
+    let t = 0;
+    const terrain = generateTerrain(3);
+    const world = initialWorld(3, terrain);
+    const shows: number[] = [];
+    const landed: number[] = [];
+    const game = createGame({ world, terrain, resolve: { rules: [] } }, {
+      show(_shape, edit, more) {
+        t += ms;
+        shows.push(t);
+        landed.push(edit ? 1 + (more?.length ?? 0) : 0);
+      },
+    });
+    const hurried = { n: 0 };
+    const growth = createGrowth(game, { clock: () => t, onHurry: () => void hurried.n++ });
+    return { game, growth, shows, landed, hurried, edits: growTown(terrain, 3), clock: () => t, pass: (by: number) => void (t += by) };
+  }
+
+  test('on a slow device the pieces land in runs with a rest between, about as many a second, and every one lands', () => {
+    const d = slow(90);
+    d.growth.start(d.edits);
+    const from = d.clock();
+    const first = d.shows.length;
+    while (d.growth.active) {
+      d.pass(16);
+      d.growth.tick(d.clock());
+    }
+    const seconds = (d.clock() - from) / 1000;
+    // No slower than a third off 25 a second, and at most about a quarter of the time spent on it.
+    expect(d.edits.length / seconds).toBeGreaterThan(17);
+    expect(((d.shows.length - first) * 90) / (seconds * 1000)).toBeLessThan(1 / (1 + REST) + 0.03);
+    expect(Math.max(...d.landed)).toBeLessThanOrEqual(RUN);
+    const full = setup();
+    full.game.editAll(clearingEdits(full.game.world));
+    full.game.editAll(d.edits);
+    expect(d.game.world.blocks.size).toBe(full.game.world.blocks.size);
+  });
+
+  test('skip on a slow device: nothing is done inside the tap, the rest follows over frames, still one undo step', () => {
+    const d = slow(90);
+    const before = d.game.world;
+    d.growth.start(d.edits);
+    for (let i = 0; i < 40; i++) {
+      d.pass(16);
+      d.growth.tick(d.clock());
+    }
+    const shows = d.shows.length;
+    d.growth.skip();
+    expect(d.shows.length).toBe(shows);
+    expect(d.hurried.n).toBe(1);
+    expect(d.growth.active).toBe(true);
+    d.growth.skip(); // a second tap changes nothing
+    expect(d.hurried.n).toBe(1);
+    let frames = 0;
+    for (; d.growth.active && frames < 100; frames++) {
+      d.pass(16);
+      d.growth.tick(d.clock());
+    }
+    expect(frames).toBeGreaterThan(1);
+    expect(frames).toBeLessThan(40);
+    d.game.undo();
+    expect(d.game.world).toBe(before);
   });
 
   test('knows an untouched island, and how to clear one', () => {

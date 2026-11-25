@@ -1370,6 +1370,11 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       void renderer.compileAsync(new THREE.Scene().add(probe), camera).then(() => probe.geometry.dispose(), () => probe.geometry.dispose());
       void renderer.compileAsync(ghostPostScene, postCamera).catch(() => undefined);
     },
+    gpu() {
+      const gl = renderer.getContext();
+      const info = gl.getExtension('WEBGL_debug_renderer_info');
+      return String((info && gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) ?? '');
+    },
     quality() {
       return { level, levels: levels.map((q) => ({ ...q })) };
     },

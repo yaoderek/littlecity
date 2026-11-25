@@ -21,7 +21,7 @@ import { holdYear, type SeasonHold, type WeatherHold } from '@/life/season';
 import { partPhases } from '@/life/signals';
 import { createSlider, type SliderStop } from './slider';
 import type { CameraPose, Ghost, TownView } from '@/render/api';
-import { tally, track, watchGrowth } from '@/app/analytics';
+import { builtByHand, refused, tally, track, watchGrowth } from '@/app/analytics';
 import type { Game } from '@/app/game';
 import { brushAt, copyLook, landColumn, levelSteps, lineCells, planErase, planUse, type ActionContext, type Plan, type ToolState } from './actions';
 import { el, iconButton, installTheme, isCoarsePointer, setIcon } from './dom';
@@ -274,12 +274,17 @@ export function createInterface(host: InterfaceHost): Interface {
   let handRun = false;
   const handHeld = (): boolean => !tray.state.idle && tray.state.item === 'hand' && !growth.active;
   const undoNow = (): void => {
+    tally('undo');
     if (!mischief.undo()) game.undo();
   };
 
   // ── grow a town (design section 15a) ───────────────────────────────────
   let growingNote: (() => void) | null = null;
   const growth = createGrowth(game, {
+    onHurry() {
+      growingNote?.();
+      growingNote = feedback.banner('Finishing the town…', []);
+    },
     onDone() {
       growingNote?.();
       growingNote = null;
@@ -643,6 +648,7 @@ export function createInterface(host: InterfaceHost): Interface {
   const refuse = (reason: string, x: number, y: number): void => {
     const r = canvas.getBoundingClientRect();
     feedback.refuse(reason, x + r.left, y + r.top);
+    refused(reason, tray.state.idle ? 'hand' : tray.state.item);
     tray.shake();
   };
 
@@ -674,6 +680,31 @@ export function createInterface(host: InterfaceHost): Interface {
   let ghostKey = '';
   let ghost: Ghost | null = null;
   let worldVersion = 0;
+
+  /**
+   * On a slow device working a preview out (the whole town's shape, with the piece in it) is 50 to 100 ms,
+   * and one for every square the pointer crosses left nothing for drawing. There it takes at most a share
+   * of the time: the preview follows a little behind the pointer, and always ends up where the pointer does.
+   */
+  let ghostCost = 0;
+  let ghostDone = -Infinity;
+  let ghostTimer = 0;
+  const GHOST_CHEAP = 12;
+  const GHOST_REST = 2;
+  /** The preview worked out by `make`, now or (a slow device, the last one only just done) soon. */
+  const ghostNow = (make: () => Ghost | null, key: string): void => {
+    const t = performance.now();
+    const wait = ghostCost < GHOST_CHEAP ? 0 : ghostDone + ghostCost * GHOST_REST - t;
+    window.clearTimeout(ghostTimer);
+    if (wait > 0) {
+      ghostTimer = window.setTimeout(() => ghostPace.want(), wait);
+      return;
+    }
+    setGhost(make(), key);
+    ghostDone = performance.now();
+    const took = ghostDone - t;
+    ghostCost = took > ghostCost ? took : ghostCost + (took - ghostCost) * 0.3;
+  };
 
   const setGhost = (next: Ghost | null, key: string): void => {
     ghostKey = key;
@@ -710,7 +741,7 @@ export function createInterface(host: InterfaceHost): Interface {
         const plan = planUse(tool(), seen.pick, seen.ctx);
         const key = `${worldVersion}|${tray.state.item}|${heldLength()}|${plan.at}|${JSON.stringify(plan.tries[0] ?? null)}`;
         if (key === ghostKey) return;
-        return setGhost(ghostForLand(plan, game), key);
+        return ghostNow(() => ghostForLand(plan, game), key);
       }
       const length = heldLength();
       if (length !== null && length > 1) {
@@ -719,13 +750,13 @@ export function createInterface(host: InterfaceHost): Interface {
         shownRun = run;
         const key = `${worldVersion}|${tray.state.item}|${tray.state.swatch}|${tray.state.style}|${length}|${run.at}|${run.dir}|${JSON.stringify(run.edits[0] ?? run.refusal)}`;
         if (key === ghostKey) return;
-        return setGhost(ghostForRun(run, game), key);
+        return ghostNow(() => ghostForRun(run, game), key);
       }
       const plan = planUse(tool(), seen.pick, seen.ctx);
       // The same piece on the same target in the same world: nothing to work out again.
       const key = `${worldVersion}|${tray.state.item}|${tray.state.swatch}|${tray.state.style}|${plan.at}|${JSON.stringify(plan.tries[0] ?? plan.refusal ?? null)}`;
       if (key === ghostKey) return;
-      setGhost(ghostFor(plan, game), key);
+      ghostNow(() => ghostFor(plan, game), key);
     };
     shownRun = null;
     ghostOf();
@@ -1018,6 +1049,7 @@ export function createInterface(host: InterfaceHost): Interface {
       else if (!perform(planUse(tool(), seen.pick, seen.ctx), x, y)) return;
       tally('uses');
       tally(`use_${item}`);
+      if (!isToolId(item)) builtByHand(item);
     },
     erase(x, y) {
       if (dismissing) return;
@@ -1295,8 +1327,8 @@ export function createInterface(host: InterfaceHost): Interface {
         growTown: () => grow(),
         growing: () => growth.active,
         emptyIsland() {
-          // The whole growth is one undo step: finish it, then take it back.
-          growth.skip();
+          // The whole growth is one undo step: leave it where it is, and take it back.
+          growth.stop();
           game.undo();
         },
       })
@@ -1307,7 +1339,7 @@ export function createInterface(host: InterfaceHost): Interface {
     if (!new URLSearchParams(location.search).has('mischief')) return;
     if (!welcomeHasTown()) {
       grow();
-      growth.skip();
+      growth.skip(true);
     }
     tray.select('torch');
   };
@@ -1373,6 +1405,7 @@ export function createInterface(host: InterfaceHost): Interface {
     }),
     dispose() {
       window.clearTimeout(lengthHintTimer);
+      window.clearTimeout(ghostTimer);
       offMischief();
       mischief.dispose();
       growth.stop();

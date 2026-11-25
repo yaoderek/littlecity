@@ -4,6 +4,11 @@
 // skip() puts the rest down at once. The clearing and the whole growth are
 // one undo step (the Game's batch). No DOM: the interface ticks it from the
 // frame loop with the clock and wires skip to a click or a key.
+//
+// On a slow device (an edit costs more than SLOW) the edits go down several at a time with a rest
+// between, at the same 25 a second: working the town out costs the same for one piece as for ten, and
+// one at a time it left a phone at 5 frames a second for its whole first minute. And skip() there
+// spreads the rest over a few frames: done inside the tap that asked for it, it was a 2 to 3 second freeze.
 
 import { keyY } from '@/core/grid';
 import type { Edit, Terrain, World } from '@/core/world';
@@ -19,8 +24,8 @@ export interface Growth {
   start(edits: readonly Edit[]): void;
   /** Once per frame with the clock in milliseconds: puts down the edits that are due. */
   tick(now: number): void;
-  /** Puts down everything that is left, at once. */
-  skip(): void;
+  /** Puts down everything that is left: at once, or over a few frames on a slow device (unless `now`). */
+  skip(now?: boolean): void;
   /** Stops where it is (the town so far stays, as one undo step). */
   stop(): void;
 }
@@ -32,11 +37,22 @@ export interface GrowthOptions {
   perFrame?: number;
   /** Milliseconds of edits to put down in one frame: the first due edit always goes, the rest wait once this is spent. Default 8. */
   budgetMs?: number;
-  /** Milliseconds, for the budget. Default performance.now. */
+  /** Milliseconds, to time the edits by (the budget, and whether this is a slow device). Default performance.now. */
   clock?(): number;
   /** The growth finished (played out, skipped or stopped). */
   onDone?(): void;
+  /** skip() is being spread over the next frames. */
+  onHurry?(): void;
 }
+
+/** Milliseconds an edit takes, above which they go down in runs. */
+export const SLOW = 12;
+/** After a run that took so long, a rest this many times as long. */
+export const REST = 3;
+/** At most this many edits in a run. */
+export const RUN = 24;
+/** Skipping on a slow device: each frame's run aims to take about this long, ms. */
+const HURRY = 100;
 
 /** True if the island holds nothing but its starting trees (no confirmation is needed to grow over it). */
 export function onlyStartingTrees(world: World, terrain: Terrain): boolean {
@@ -74,14 +90,29 @@ export function createGrowth(game: Game, opts: GrowthOptions = {}): Growth {
   let active = false;
   let last: number | null = null;
   let due = 0;
+  /** What showing the town with one step's edits costs here (ms), of late. */
+  let cost = 0;
+  let rested = -Infinity;
+  /** Skipping, spread over frames: how many edits to the next one (0: not skipping). */
+  let hurry = 0;
 
   const finish = (): void => {
     if (!active) return;
     active = false;
+    hurry = 0;
     queue = [];
     next = 0;
     game.end();
     opts.onDone?.();
+  };
+  /** Puts down the next n edits as one run; returns how long that took. */
+  const run = (n: number): number => {
+    const t = clock();
+    game.editRun(queue.slice(next, next + n));
+    next += n;
+    const took = clock() - t;
+    cost = took > cost ? took : cost + (took - cost) * 0.3;
+    return took;
   };
 
   return {
@@ -100,6 +131,7 @@ export function createGrowth(game: Game, opts: GrowthOptions = {}): Growth {
       next = 0;
       last = null;
       due = 0;
+      hurry = 0;
       active = true;
       if (queue.length === 0) finish();
     },
@@ -108,18 +140,41 @@ export function createGrowth(game: Game, opts: GrowthOptions = {}): Growth {
       if (last === null) last = now;
       due += (Math.max(0, now - last) / 1000) * rate;
       last = now;
-      let n = Math.min(Math.floor(due), perFrame);
-      due -= Math.floor(due);
-      // A slow frame drops its backlog rather than catching up, so growth never holds a frame for long.
-      const began = clock();
-      while (n-- > 0 && next < queue.length) {
-        game.edit(queue[next++]!);
-        if (clock() - began >= budgetMs) break;
+      if (hurry > 0) {
+        const took = run(hurry);
+        if (took > HURRY * 1.4) hurry = Math.max(4, hurry >> 1);
+        else if (took < HURRY * 0.6) hurry *= 2;
+      } else if (cost > SLOW) {
+        // (A device that stalls for seconds does not owe all of them at once.)
+        due = Math.min(due, RUN);
+        if (due < 1 || now - rested < cost * REST) return;
+        const n = Math.floor(due);
+        due -= n;
+        rested = now + run(n);
+      } else {
+        let n = Math.min(Math.floor(due), perFrame);
+        due -= Math.floor(due);
+        // A slow frame drops its backlog rather than catching up, so growth never holds a frame for long.
+        const began = clock();
+        let at = began;
+        while (n-- > 0 && next < queue.length) {
+          game.edit(queue[next++]!);
+          const t = clock();
+          const took = t - at;
+          at = t;
+          cost = took > cost ? took : cost + (took - cost) * 0.3;
+          if (t - began >= budgetMs) break;
+        }
       }
       if (next >= queue.length) finish();
     },
-    skip() {
-      if (!active) return;
+    skip(now = false) {
+      if (!active || (hurry > 0 && !now)) return;
+      if (cost > SLOW && !now) {
+        hurry = RUN;
+        opts.onHurry?.();
+        return;
+      }
       game.editAll(queue.slice(next));
       next = queue.length;
       finish();

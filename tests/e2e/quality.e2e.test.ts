@@ -14,7 +14,7 @@ afterAll(async () => {
   await app?.close();
 });
 
-type Q = { level: number; levels: { pixelRatio: number; superSample: number; halfInk: boolean }[] };
+type Q = { level: number; levels: { pixelRatio: number; superSample: number; halfInk: boolean; rough?: true }[] };
 const quality = (page: Page): Promise<Q> => page.evaluate('window.__lc.quality()') as Promise<Q>;
 const frames = (page: Page): Promise<unknown> => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 /** The canvas's size in device pixels. */
@@ -31,7 +31,7 @@ describe('quality levels', () => {
     const q = await quality(page);
     expect(q.level).toBe(0);
     expect(q.levels[0]).toEqual({ pixelRatio: 3, superSample: 1, halfInk: false });
-    expect(q.levels.at(-1)!.halfInk).toBe(true);
+    expect(q.levels.filter((l) => !l.rough).at(-1)!.halfInk).toBe(true);
     await frames(page);
     expect(await drawn(page)).toEqual({ w: 1170, h: 2532 });
     expect(errors).toEqual([]);
@@ -43,13 +43,14 @@ describe('quality levels', () => {
     const { page, errors } = await app.open('/?seed=7&gen=1&quality=auto', { width: 2560, height: 1440, scale: 1 });
     await page.waitForFunction('window.__lc !== undefined');
     const q = await quality(page);
-    expect(q.levels.map((l) => l.superSample)).toEqual([2, 1.5, 1, 1]);
+    expect(q.levels.map((l) => l.superSample)).toEqual([2, 1.5, 1, 1, 1, 1]);
     expect(q.level).toBe(1);
     const visit = async (): Promise<void> => {
       for (const i of q.levels.keys()) {
         await page.evaluate((i) => (window as unknown as { __lc: { view: { setQuality(n: number): void } } }).__lc.view.setQuality(i), i);
         await frames(page);
-        expect(await drawn(page)).toEqual({ w: 2560, h: 1440 });
+        const pr = q.levels[i]!.pixelRatio;
+        expect(await drawn(page)).toEqual({ w: Math.floor(2560 * pr), h: Math.floor(1440 * pr) });
       }
     };
     await visit();

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /* global performance, requestAnimationFrame, setTimeout, HTMLCanvasElement */
 // node tools/perf.mjs [scenario ...] [--seconds 20] [--size 1280x800] [--scale 2] [--query "weather=rain"]
-//                     [--play house|pan|orbit] [--click-ms 700] [--profile] [--worst 4] [--depth 16] [--incl 40] [--passes] [--gl] [--heap] [--url http://...] [--swallow posthog] [--top 25] [--vsync] [--windows 4] [--json out.json]
+//                     [--play house|pan|orbit] [--click-ms 700] [--profile] [--worst 4] [--depth 16] [--incl 40] [--passes] [--gl] [--heap] [--url http://...] [--swallow posthog] [--top 25] [--vsync] [--windows 4] [--json out.json] [--cpu 6] [--angle swiftshader] [--phone]
 //
 // The real game page (index.html, the frame loop in src/app/main.ts) with a scenario open, played for
 // some seconds with the display's frame-rate cap taken off, so the numbers show how long a frame
@@ -14,6 +14,11 @@
 //                          edit looks like a 300 ms to 1 s freeze that no player gets.
 //   --vsync                what a player gets: missed frames and their causes (--profile --worst 5),
 //                          while building (--play house) or on a first visit (fresh --welcome).
+//
+// A weak device, stood in for on a strong one: --cpu 6 slows the page's JavaScript six times (a cheap phone
+// or an old laptop); --angle swiftshader draws with no graphics card at all (far slower than any real
+// one, and what a player with hardware acceleration off gets); --phone is a touch screen's page. The
+// governor is off under automation: add --query quality=auto to see what it does.
 //
 // Prints, per scenario: frames a second and the frame gaps (median, 95th, 99th, worst) for each
 // window of the run (a town that gets slower as it runs shows as falling windows), how many frames
@@ -33,7 +38,7 @@ const [width, height] = String(flags.size ?? '1280x800').split('x').map(Number);
 const scale = Number(flags.scale ?? 2);
 const top = Number(flags.top ?? 25);
 
-const ARGS = ['--ignore-gpu-blocklist', '--enable-gpu', '--use-angle=metal', '--enable-unsafe-swiftshader', '--enable-precise-memory-info'];
+const ARGS = ['--ignore-gpu-blocklist', '--enable-gpu', `--use-angle=${flags.angle ?? 'metal'}`, '--enable-unsafe-swiftshader', '--enable-precise-memory-info'];
 if (!flags.vsync) ARGS.push('--disable-frame-rate-limit', '--disable-gpu-vsync');
 
 const sorted = (xs) => [...xs].sort((a, b) => a - b);
@@ -45,7 +50,7 @@ const browser = await chromium.launch({ headless: true, args: ARGS });
 const out = [];
 try {
   for (const name of names) {
-    const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: scale });
+    const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: scale, ...(flags.phone ? { isMobile: true, hasTouch: true } : {}) });
     // --welcome: a first visit (the page name `fresh` with it is what a new player gets: a town growing by itself).
     if (!flags.welcome) await ctx.addInitScript(() => {
       try {
@@ -130,6 +135,7 @@ try {
       });
     }
     const page = await ctx.newPage();
+    if (flags.cpu) await (await ctx.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(flags.cpu) });
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e?.stack ?? e)));
     const q = [name === 'fresh' ? '' : `scenario=${name}`, flags.query ? String(flags.query) : ''].filter(Boolean).join('&');

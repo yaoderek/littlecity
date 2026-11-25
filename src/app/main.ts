@@ -34,16 +34,16 @@ import { raidsOf } from '@/life/raid/raids';
 import { applyCalendar } from '@/life/season';
 import { createSignals, type TownSignals } from '@/life/signals';
 import { createTownView, type CameraPose } from '@/render/index';
-import { createGovernor, startLevel } from '@/render/quality';
+import { createGovernor, deviceLevel, startLevel } from '@/render/quality';
+import { createPace } from './pace';
 import type { ShapePlan } from '@/resolve/plan';
 import { buildScenario, scenarioResolveOptions, type CameraSpec, type Scenario } from '@/scenario';
-import { findScenario } from '@/scenario/discover';
 import { generateTerrain, initialWorld, NEW_ISLAND_GEN, terrainOf, type TerrainGen } from '@/terrain/terrain';
 import { download, townFromHash, townPicture } from '@/ui/files';
 import { dressDue, onlyStartingTrees } from '@/ui/growth';
 import { createInterface, type Interface } from '@/ui/interface';
 import { loadTown } from '@/world/save';
-import { startAnalytics, track, townShown } from './analytics';
+import { frameDrawn, slowDevice, startAnalytics, track, townShown } from './analytics';
 import { createAutosave } from './autosave';
 import { createGame, type GameStart } from './game';
 import { createMusic } from './music';
@@ -73,7 +73,10 @@ const newSeed = (): number => hash(Date.now() | 0, 'island', Math.floor(Math.ran
 const params = new URLSearchParams(location.search);
 const scenarioName = params.get('scenario');
 const seedParam = params.get('seed');
-let scn: Scenario | undefined = scenarioName ? findScenario(scenarioName) : undefined;
+// The scenarios are fetched only when one is asked for. Never import them at the top of this file: some
+// (scenarios/core/grown-*) plan a whole town as they load, and all of them together were four fifths of
+// the page's start on a slow phone, for players who never see one (tests/e2e/start.e2e.test.ts).
+let scn: Scenario | undefined = scenarioName ? (await import('@/scenario/discover')).findScenario(scenarioName) : undefined;
 if (scenarioName && !scn) console.warn(`no scenario named '${scenarioName}'`);
 
 // My towns (src/app/towns.ts): the keeper files the saved town in the library before anything can be saved over it.
@@ -145,18 +148,27 @@ let lastDressed = -Infinity;
 let fromMischief = false;
 let ghostQueued = false;
 const BUSY_FRAMES = 3;
+/** Milliseconds of the page's own work on the town since the last frame began. */
+let townWork = 0;
+/** When the dressing is worked out: at once, or on a slow device a little after the edit is drawn. */
+const pace = createPace();
 
 const game = createGame(tiered(start), {
   // CONTRACTS section 12: setTown before life.sync, so the instances exist.
-  show(shape: ShapePlan, landed: Edit | null) {
+  show(shape: ShapePlan, landed: Edit | null, more?: readonly Edit[]) {
+    const t = performance.now();
     busyFrames = BUSY_FRAMES;
+    pace.shown();
     // Mischief's edits are spread over frames. The player's own (a click, a growth piece) draws what it
     // changed and leaves mischief's waiting rebuilds waiting. Undo, redo, abort and a new town draw all now.
     view.setTown(shape, null, { spread: fromMischief || (landed !== null ? 'waiting' : false) });
     life.sync({ shape, dressing: null });
     townShown(shape, landed !== null);
-    if (landed?.type === 'placeBlock') signals.emit('blockLanded', landed.cell);
-    if (landed?.type === 'eraseBlock') signals.emit('blockRemoved', landed.cell);
+    for (const e of landed ? [landed, ...(more ?? [])] : []) {
+      if (e.type === 'placeBlock') signals.emit('blockLanded', e.cell);
+      if (e.type === 'eraseBlock') signals.emit('blockRemoved', e.cell);
+    }
+    townWork += performance.now() - t;
   },
   changed() {
     ui?.sync();
@@ -197,6 +209,7 @@ function open(next: GameStart): void {
   life.dispose();
   // A new island must not wait out the old one's dressing interval and show its props meanwhile.
   lastDressed = -Infinity;
+  pace.reset();
   signals = createSignals(next.world.seed);
   signals.hold(holding);
   if (seasonHolding !== 'run') signals.holdSeason(seasonHolding);
@@ -330,7 +343,8 @@ ui = createInterface({
 if (keeper.savedUnreadable) ui.feedback.toast('Your last town could not be opened by this version of Little City. It is kept safe in My towns.');
 
 // ── analytics (src/app/analytics.ts) ─────────────────────────────────────
-startAnalytics({ scenario: scn !== undefined });
+const gpu = view.gpu?.() ?? '';
+startAnalytics({ scenario: scn !== undefined, gpu });
 track('town_opened', { how: shared?.ok ? (visiting ? 'shared_visiting' : 'shared') : saved ? 'saved' : 'new' });
 townShown(game.shape, false);
 
@@ -379,36 +393,68 @@ const levelCount = view.quality?.().levels.length ?? 1;
 const automated = (navigator as { webdriver?: boolean }).webdriver === true;
 if (qualityParam !== null && qualityParam !== 'auto') view.setQuality?.(Number(qualityParam) | 0);
 const governed = levelCount > 1 && (qualityParam === 'auto' || (qualityParam === null && !automated));
-// A big screen that would be drawn at four times its pixels starts a step down (startLevel).
-const firstLevel = governed ? startLevel(view.quality?.().levels ?? [], canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight) : 0;
+// Where it starts: a big screen that would be drawn at four times its pixels starts a step down
+// (startLevel), a device that says it is a weak one lower (deviceLevel), and a browser that has been
+// here before where it ended up last time (the governor tries a step up when frames are fast).
+const QUALITY_KEY = 'lc:quality';
+const qualities = view.quality?.().levels ?? [];
+/** Levels differ by screen: a level is remembered for this many of them at this pixel ratio. */
+const qualityScreen = `${levelCount}@${window.devicePixelRatio}`;
+function rememberedLevel(): number {
+  const [screen, level] = (storage()?.getItem(QUALITY_KEY) ?? '').split(':');
+  return screen === qualityScreen ? Number(level) | 0 : 0;
+}
+const firstLevel = governed
+  ? Math.max(
+      startLevel(qualities, canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight),
+      deviceLevel(qualities, { gpu, memory: (navigator as { deviceMemory?: number }).deviceMemory }),
+      rememberedLevel(),
+    )
+  : 0;
 if (firstLevel > 0) view.setQuality?.(firstLevel);
-const governor = governed ? createGovernor(levelCount, firstLevel) : null;
+if (qualities[firstLevel]?.rough) slowDevice();
+const governor = governed ? createGovernor(levelCount, firstLevel, (i) => qualities[i]?.rough === true) : null;
 let lastPose = '';
 
 // ── the frame loop ───────────────────────────────────────────────────────
 let last = performance.now();
 function frame(now: number): void {
   const real = Math.min(0.1, Math.max(0, (now - last) / 1000));
+  frameDrawn(now - last, governor?.level ?? 0);
   if (governor) {
     // A change of sharpness waits for the picture to be moving, where it does not show.
     const c = view.getCamera();
     const pose = `${c.yaw}|${c.pitch}|${c.zoom}|${c.target.join(',')}`;
     const moving = pose !== lastPose || (ui?.fly.active ?? false);
     lastPose = pose;
-    const next = governor.frame(now - last, moving, busyFrames > 0);
-    if (next !== null) view.setQuality?.(next);
+    const next = governor.frame(now - last, moving, busyFrames > 0, townWork);
+    if (next !== null) {
+      view.setQuality?.(next);
+      if (qualities[next]?.rough) slowDevice();
+      try {
+        storage()?.setItem(QUALITY_KEY, `${qualityScreen}:${next}`);
+      } catch {
+        // Storage full or refused: it finds its level again next time.
+      }
+    }
   }
+  townWork = 0;
   if (busyFrames > 0) busyFrames--;
   const dt = signals.advance((now - last) / 1000);
   last = now;
-  // While a town grows, its dressing follows a few times a second, not after every piece.
-  const ready = dressDue(now, lastDressed, (ui?.growth.active ?? false) || mischief.busy) ? game.poll() : null;
+  // On a slow device the dressing waits for the piece to be drawn first, and takes only a share of the time;
+  // and while a town grows it follows a few times a second, not after every piece.
+  const dressFrom = performance.now();
+  const ready = pace.due(dressFrom) && dressDue(now, lastDressed, (ui?.growth.active ?? false) || mischief.busy) ? game.poll() : null;
   if (ready) {
     lastDressed = now;
     busyFrames = BUSY_FRAMES;
     view.setDressing(ready.dressing);
     life.sync(ready);
     ui?.dressed(ready.dressing);
+    const t = performance.now();
+    pace.done(t, t - dressFrom);
+    townWork += t - dressFrom;
     // The ghost's shaders are linked once, while idle, not on the first hover over the town.
     if (!ghostQueued) {
       ghostQueued = true;

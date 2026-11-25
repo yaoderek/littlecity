@@ -28,9 +28,10 @@ export interface GameStart {
 export interface GameEvents {
   /**
    * The town to draw changed. `landed` is the edit that changed it (null for
-   * undo, redo, a new island or a restyle). Called once at creation too.
+   * undo, redo, a new island or a restyle); `more`, the others of a run that
+   * landed with it. Called once at creation too.
    */
-  show(shape: ShapePlan, landed: Edit | null): void;
+  show(shape: ShapePlan, landed: Edit | null, more?: readonly Edit[]): void;
   /** The world or the history changed: refresh buttons, schedule a save. */
   changed?(): void;
 }
@@ -51,6 +52,12 @@ export interface Game {
    * open. Returns how many were applied.
    */
   editAll(edits: readonly Edit[]): number;
+  /**
+   * Applies every legal edit of a list in order and shows the result once,
+   * each of them landing (a town growing on a slow device, several pieces at
+   * a time: working the town out costs the same for one as for ten).
+   */
+  editRun(edits: readonly Edit[]): number;
   /** Opens a batch: the edits until end() are one undo step. */
   begin(): void;
   end(): void;
@@ -92,10 +99,11 @@ export function createGame(start: GameStart, events: GameEvents): Game {
   /** The world when the open batch began, or null. */
   let batch: World | null = null;
 
-  const show = (next: World, landed: Edit | null): void => {
+  const show = (next: World, landed: Edit | null, more?: readonly Edit[]): void => {
     world = next;
     shape = resolver.update(world);
-    events.show(shape, landed);
+    if (more) events.show(shape, landed, more);
+    else events.show(shape, landed);
     events.changed?.();
   };
 
@@ -145,6 +153,19 @@ export function createGame(start: GameStart, events: GameEvents): Game {
       if (batch === null) history = pushHistory(history, next);
       show(next, null);
       return n;
+    },
+    editRun(edits) {
+      let next = world;
+      const done: Edit[] = [];
+      for (const e of edits) {
+        if (!canApply(next, terrain, e).ok) continue;
+        next = applyEdit(next, terrain, e);
+        done.push(e);
+      }
+      if (done.length === 0) return 0;
+      if (batch === null) history = pushHistory(history, next);
+      show(next, done[0]!, done.slice(1));
+      return done.length;
     },
     begin() {
       closeBatch();

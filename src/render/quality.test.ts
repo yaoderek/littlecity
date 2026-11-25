@@ -1,7 +1,7 @@
 // The quality levels and the governor that steps through them (src/render/quality.ts).
 
 import { describe, expect, test } from 'vitest';
-import { createGovernor, GOVERNOR, qualityLevels, startLevel } from './quality';
+import { createGovernor, deviceLevel, GOVERNOR, qualityLevels, startLevel } from './quality';
 
 describe('levels', () => {
   test('sharpest first: super-sampling goes first, then the pixel ratio toward 2, the half-resolution ink last', () => {
@@ -11,14 +11,18 @@ describe('levels', () => {
       { pixelRatio: 2, superSample: 1, halfInk: false },
       { pixelRatio: 2, superSample: 1, halfInk: true },
       { pixelRatio: 1.5, superSample: 1, halfInk: true },
+      { pixelRatio: 1, superSample: 1, halfInk: false, rough: true },
+      { pixelRatio: 0.7, superSample: 1, halfInk: false, rough: true },
     ]);
-    expect(qualityLevels(2).map((q) => [q.pixelRatio, q.halfInk])).toEqual([[2, false], [2, true], [1.5, true]]);
-    expect(qualityLevels(2.625).map((q) => q.pixelRatio)).toEqual([2.625, 2, 2, 1.5]);
+    expect(qualityLevels(2).map((q) => [q.pixelRatio, q.halfInk])).toEqual([[2, false], [2, true], [1.5, true], [1, false], [0.7, false]]);
+    expect(qualityLevels(2.625).map((q) => q.pixelRatio)).toEqual([2.625, 2, 2, 1.5, 1, 0.7]);
     expect(qualityLevels(1)).toEqual([
       { pixelRatio: 1, superSample: 2, halfInk: false },
       { pixelRatio: 1, superSample: 1.5, halfInk: false },
       { pixelRatio: 1, superSample: 1, halfInk: false },
       { pixelRatio: 1, superSample: 1, halfInk: true },
+      { pixelRatio: 0.75, superSample: 1, halfInk: false, rough: true },
+      { pixelRatio: 0.5, superSample: 1, halfInk: false, rough: true },
     ]);
     // A 4x screen is drawn at 3 at most.
     expect(qualityLevels(4)[0]!.pixelRatio).toBe(3);
@@ -171,5 +175,78 @@ describe('the governor', () => {
     let changed = false;
     for (let i = 0; i < 6000; i++) if (g.frame(i % 100 === 0 ? 900 : 16.7, true) !== null) changed = true;
     expect(changed).toBe(false);
+  });
+
+  test('a device too slow to draw ten frames in a window is the slowest of all: it steps down, quickly, to the lowest level', () => {
+    // 1.3 frames a second (no graphics card, a 1366 x 768 window): every gap is longer than a "pause",
+    // and a window never held ten frames, so this was judged fine for ever (found 2026-11-24).
+    for (const cost of [770, 300, 180]) {
+      const g = createGovernor(6);
+      let t = 0;
+      let at = Infinity;
+      while (t < 30_000) {
+        t += cost;
+        g.frame(cost, false);
+        if (g.level === 5) at = Math.min(at, t);
+      }
+      expect(g.level, `${cost} ms frames`).toBe(5);
+      expect(at, `${cost} ms frames`).toBeLessThan(16_000);
+    }
+  });
+
+  test('a device that is slow only while every frame is busy (a town growing by itself) is still found out', () => {
+    const g = createGovernor(6);
+    let t = 0;
+    while (t < 20_000) {
+      t += 150;
+      // 30 ms of the gap was the page's own work; the rest is drawing.
+      g.frame(150, true, true, 30);
+    }
+    expect(g.level).toBeGreaterThan(2);
+  });
+
+  test('a page busy with its own work on a fast graphics card keeps its sharpness', () => {
+    const g = createGovernor(6);
+    let t = 0;
+    while (t < 60_000) {
+      t += 150;
+      g.frame(150, true, true, 140);
+    }
+    expect(g.level).toBe(0);
+  });
+
+  test('a rough level (below the screen\'s own pixels) is only for frames that are really slow', () => {
+    const levels = qualityLevels(1);
+    const rough = levels.findIndex((q) => q.rough);
+    expect(rough).toBeGreaterThan(0);
+    const settle = (cost: number): number => {
+      const g = createGovernor(levels.length, 0, (i) => levels[i]!.rough === true);
+      for (let t = 0; t < 60_000; t += cost) g.frame(cost, true);
+      return g.level;
+    };
+    expect(settle(25)).toBe(rough - 1); // 40 a second: sharp at 40 is better than soft at 60
+    expect(settle(50)).toBe(levels.length - 1);
+  });
+});
+
+describe('what the device says it is', () => {
+  test('drawn by the processor: straight to the lowest level', () => {
+    const l = qualityLevels(1);
+    for (const gpu of ['Google SwiftShader', 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)))', 'llvmpipe (LLVM 15.0.7, 256 bits)', 'Microsoft Basic Render Driver'])
+      expect(deviceLevel(l, { gpu })).toBe(l.length - 1);
+  });
+  test('a weak graphics chip or little memory starts without the super-sampling, or at twice a phone\'s pixels', () => {
+    const l = qualityLevels(1);
+    expect(l[deviceLevel(l, { gpu: 'ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)' })]!.superSample).toBe(1);
+    expect(l[deviceLevel(l, { gpu: 'ANGLE (Intel, Intel(R) HD Graphics 4000)' })]!.superSample).toBe(1);
+    const p = qualityLevels(3);
+    for (const gpu of ['Mali-G52', 'Adreno (TM) 610', 'PowerVR Rogue GE8320']) expect(p[deviceLevel(p, { gpu })]!.pixelRatio).toBe(2);
+    expect(p[deviceLevel(p, { gpu: '', memory: 2 })]!.pixelRatio).toBe(2);
+    // None of these ever starts rough.
+    expect(p[deviceLevel(p, { gpu: 'Mali-G52' })]!.rough).toBeUndefined();
+  });
+  test('anything else starts as before', () => {
+    const l = qualityLevels(1);
+    for (const gpu of ['', 'Apple GPU', 'ANGLE (Apple, ANGLE Metal Renderer: Apple M1)', 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060)', 'Adreno (TM) 750', 'Mali-G715']) expect(deviceLevel(l, { gpu })).toBe(0);
   });
 });

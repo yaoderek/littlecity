@@ -146,7 +146,9 @@ export interface TownView {
    * this view has, sharpest first, and the one in use. A view made with a fixed pixel ratio or ink
    * has one level.
    */
-  quality?(): { level: number; levels: { pixelRatio: number; superSample: number; halfInk: boolean }[] };
+  quality?(): { level: number; levels: { pixelRatio: number; superSample: number; halfInk: boolean; rough?: true }[] };
+  /** The graphics driver's name, as the browser tells it ('' where it does not). */
+  gpu?(): string;
   /** Changes to a level (an index into quality().levels). */
   setQuality?(level: number): void;
 

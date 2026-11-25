@@ -10,15 +10,19 @@
 //   playtime          {seconds, uses, use_<item>, erased, mischief_<tool>}: every 30 s of play (the tab on
 //                     screen and some input in the last 3 minutes), and whatever is left when the tab hides.
 //                     uses: clicks that did something with a piece or a land tool (use_<item> says which).
-//                     Clicks are tallied into it rather than sent one by one.
+//                     Clicks are tallied into it rather than sent one by one. Also how it ran: fps (the usual
+//                     frame), long_frames (per cent of frames over 50 ms), quality (the sharpness level, 0 best).
+//   first_build       {seconds, item}: the first piece this visit placed by hand, and how long after the game appeared
+//   piece_refused     {reason, item}: a click that could not be done and why (the first 20 of a visit)
 //   building_earned   {role, grown}: a kind of building this browser had never seen, appearing after an
 //                     edit (grown: a "grow a town" made it, not the player's hand)
 //   town_grew         {blocks, grown}: this browser's biggest town passed 10, 25, 50, 100, 250, 500 or 1000 blocks
 //   town_shared       {via: link | link_box | file}
 //   postcard_saved, town_downloaded, town_file_opened, shared_town_kept, shared_town_left,
 //   town_grown {new_island}, new_island, guide_opened, fly_started
-// PostHog adds its own: $pageview, $pageleave, clicks on the interface (autocapture), and session replays
-// (desktops only, with the town in them).
+// Every event carries build, touch, and (for telling slow devices apart) gpu, cores and memory.
+// PostHog adds its own: $pageview, $pageleave, $web_vitals, clicks on the interface (autocapture), and session
+// replays (desktops only, and not slow ones, with the town in them).
 //
 // A share link carries the whole town in the URL fragment (#t=...): it is cut from every URL sent.
 
@@ -79,19 +83,75 @@ export function watchGrowth(isGrowing: () => boolean): void {
   growing = isGrowing;
 }
 
+/** The device could hardly draw the town: it is spared the recorder (its pictures of the canvas, its watching). */
+let slow = false;
+export function slowDevice(): void {
+  if (slow) return;
+  slow = true;
+  ph?.stopSessionRecording();
+}
+
+/** The chip's name out of what a browser says of its graphics ("ANGLE (Intel, Intel(R) UHD Graphics 620 …)"). */
+export function chip(gpu: string): string {
+  const angle = /^ANGLE \([^,]*, (?:ANGLE Metal Renderer: )?(.*?)(?: Direct3D| \(0x|, |\)$)/.exec(gpu);
+  return (angle?.[1] ?? gpu).slice(0, 48);
+}
+
+// ── how it runs ──────────────────────────────────────────────────────────
+/** Frames since the last playtime event, by their length in 4 ms steps. */
+const STEP = 4;
+const frames = new Uint32Array(64);
+let level = 0;
+/** Once a frame: how long since the last (ms), and the sharpness level it was drawn at. */
+export function frameDrawn(gap: number, quality: number): void {
+  if (!on || gap > 2000) return; // a hidden tab
+  frames[Math.min(frames.length - 1, Math.max(0, Math.round(gap / STEP)))]!++;
+  level = quality;
+}
+
+/** The usual frame's rate and the share of long frames, and starts counting over. */
+function running(): Props {
+  let all = 0, long = 0;
+  for (let i = 0; i < frames.length; i++) {
+    all += frames[i]!;
+    if (i * STEP > 50) long += frames[i]!;
+  }
+  if (all < 30) return {};
+  let half = 0, median = 0;
+  while (half * 2 < all) half += frames[median++]!;
+  frames.fill(0);
+  return { fps: Math.round(1000 / Math.max(STEP, (median - 1) * STEP)), long_frames: Math.round((long / all) * 100), quality: level };
+}
+
+// ── finding one's way ────────────────────────────────────────────────────
+let opened = 0;
+let built = false;
+let refusals = 0;
+/** A piece went down by the player's own hand. */
+export function builtByHand(item: string): void {
+  if (built) return;
+  built = true;
+  track('first_build', { seconds: Math.round((performance.now() - opened) / 1000), item });
+}
+/** A click that could not be done. */
+export function refused(reason: string, item: string): void {
+  if (refusals++ < 20) track('piece_refused', { reason, item });
+}
+
 /** Turns analytics on for this page, if it should be. Call once, after the town is set up. */
-export function startAnalytics(opts: { scenario: boolean }): void {
+export function startAnalytics(opts: { scenario: boolean; gpu?: string }): void {
   const asked = new URLSearchParams(location.search).get('analytics');
   const automated = (navigator as { webdriver?: boolean }).webdriver === true;
   if (on || !KEY || asked === 'off' || opts.scenario) return;
   // ?analytics=on is how a test or a developer turns it on where it would otherwise stay off.
   if (asked !== 'on' && (automated || !import.meta.env.PROD)) return;
   on = true;
+  opened = performance.now();
   startClock();
   const load = (): void => {
     import('posthog-js')
       .then(({ default: posthog }) => {
-        // Replays are recorded on desktops (a fine pointer) only: a phone is spared the recorder altogether (its
+        // Replays are recorded on desktops (a fine pointer) only, and not on slow ones: a phone is spared the recorder altogether (its
         // download, its watching of the page, the pictures and their upload). Phones still send events.
         //
         // A desktop replay carries the town (a WebGL canvas) as two pictures a second.
@@ -111,13 +171,14 @@ export function startAnalytics(opts: { scenario: boolean }): void {
           before_send: scrub,
           // PostHog drops browsers that look automated; a test that asked for analytics wants its events.
           opt_out_useragent_filter: asked === 'on',
-          disable_session_recording: !desktop,
+          disable_session_recording: !desktop || slow,
           session_recording: {
             maskAllInputs: true,
             captureCanvas: { recordCanvas: true, canvasFps: 2, canvasQuality: '0.4' },
           },
         });
-        posthog.register({ build: BUILD, touch: !desktop });
+        const nav = navigator as { hardwareConcurrency?: number; deviceMemory?: number };
+        posthog.register({ build: BUILD, touch: !desktop, gpu: chip(opts.gpu ?? ''), cores: nav.hardwareConcurrency ?? 0, memory: nav.deviceMemory ?? 0 });
         ph = posthog;
         for (const [event, props] of queue.splice(0)) posthog.capture(event, props);
       })
@@ -180,7 +241,7 @@ function startClock(): void {
 function ping(leaving: boolean): void {
   const seconds = Math.round(played);
   if (seconds === 0 && tallies.size === 0) return;
-  const props: Props = { seconds, ...Object.fromEntries(tallies) };
+  const props: Props = { seconds, ...running(), ...Object.fromEntries(tallies) };
   played = 0;
   tallies.clear();
   // Leaving: a beacon, which the browser still sends after the page has gone.
