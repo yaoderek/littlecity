@@ -1991,3 +1991,11 @@ saucer to hover right over its catch, a straight beam); take the
 nearest person to the click among those on screen, with no radius. He
 said nothing yet about phone performance. Still on a local preview;
 nothing live.
+
+**Derek, later the same day:** performance on the UFO preview "is
+fine" (his phone; the cause of the earlier slowdown was never proven:
+it went with the round 3 changes and/or the other session's governor
+fix `e33edcd`). Two more for round 4: when it finds nobody the saucer
+must not sit on the ground (a minimum hover height everywhere); sailors
+on a ship's deck can be abducted. Both sent to the agent. Still on a
+local preview; nothing live.
