@@ -125,7 +125,9 @@ export class SlotTable {
   }
 
   private write(slot: number): void {
-    this.data.set(this.matrix.subarray(slot * 12, slot * 12 + 12), slot * FLOATS);
+    // By hand: some hundreds a frame, and a subarray is an object each time.
+    const from = this.matrix, to = this.data;
+    for (let i = 0, a = slot * 12, b = slot * FLOATS; i < 12; i++) to[b + i] = from[a + i]!;
     this.dirty = true;
     this.touch(slot);
   }
