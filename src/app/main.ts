@@ -131,7 +131,12 @@ const tiered = (s: GameStart): GameStart => (density === undefined ? s : { ...s,
 
 // ── the parts ────────────────────────────────────────────────────────────
 const canvas = document.getElementById('town') as HTMLCanvasElement;
-const view = createTownView(canvas, { ink: inkParam === 'full' || inkParam === 'half' ? inkParam : 'auto' });
+// ?draw=packed or ?draw=plain: how the town's target is laid out (src/render/packed.ts), for the tests.
+const drawParam = params.get('draw');
+const view = createTownView(canvas, {
+  ink: inkParam === 'full' || inkParam === 'half' ? inkParam : 'auto',
+  ...(drawParam === 'packed' || drawParam === 'plain' ? { packed: drawParam === 'packed' } : {}),
+});
 let signals: TownSignals = createSignals(start.world.seed);
 applyCalendar(signals, params.get('season') ?? scn?.season, params.get('weather') ?? scn?.weather, params.get('settle') === '1' || (scn !== undefined && (scn.season !== undefined || scn.weather !== undefined)));
 let life: LifeRuntime = createLife(view.stage, signals);
@@ -160,6 +165,8 @@ let lastDressed = -Infinity;
 /** Mischief's edit is being shown: its changed buildings are redrawn a few a frame, not all in this one. */
 let fromMischief = false;
 let ghostQueued = false;
+/** The dressed town is ready and the loading drawing is to go once it has been drawn. */
+let loaderDue = false;
 const BUSY_FRAMES = 3;
 /** Milliseconds of the page's own work on the town since the last frame began. */
 let townWork = 0;
@@ -528,7 +535,12 @@ function frame(now: number): void {
   // A frame that rebuilds what mischief left waiting says nothing of how fast the page draws either.
   if (view.pending() > 0) busyFrames = Math.max(busyFrames, 1);
   render();
-  if (ready) dismissLoader();
+  // The loading drawing goes when the dressed town is on screen (on Windows the view may still be waiting for its shaders).
+  if (ready) loaderDue = true;
+  if (loaderDue && view.started?.() !== false) {
+    loaderDue = false;
+    dismissLoader();
+  }
   ui?.frame();
   // L57, L63: a note when a wedding, a beach day or another scene is on (one at a time, now and then).
   if (ui) (note ??= sceneNote(ui)).update(view.stage);
