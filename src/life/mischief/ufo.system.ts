@@ -3,25 +3,20 @@
 // 'help!' as he gets abducted. If there's no people to abduct it should just
 // fly in and then fly away"). Owner: Mischief.
 //
-// Called by a click of the Mischief drawer's UFO (`ufosOf(stage).call`); at
-// most three at once (a fourth click is refused). Each, beat by beat:
+// Called by a click of the Mischief drawer's UFO (`ufosOf(stage).call`), as
+// many at once as are called. Each, beat by beat:
 //
-//   in     from beyond the map's edge, high, fast: a swoop down and a stop
-//          over whoever it has picked (somebody out of doors, the nearest to
-//          the click within reach, else anyone), its round shadow on the town
-//   beam   a cone of pale light comes down and pools on the ground (0.5 s)
-//   lift   they are taken off their feet (thrower.grab, as the Hand does:
-//          their errand falls through) and rise in the beam, slowly at first,
-//          turning, legs kicking, shouting "HELP!", a straw hat or what they
-//          carried dropping; those near stop and look up
-//   in through the hatch (out of sight; nobody shrinks), the beam closes
-//   away  it tilts and shoots off over the edge
-//   gone  20–40 s
-//   back  in again over somewhere else in the town, beams them down, lets
-//          go a little above the ground: they land dizzy (thrower.fling),
-//          get up and walk home; and it leaves.
-//   seek  (nobody out of doors) it hovers and sweeps its beam about the empty
-//          street as if looking, gives up, and leaves.
+//   in     from beyond the map's edge, high, fast, straight down over the click
+//          to hover clear of everything (never under two storeys over ground or sea)
+//   glide  level to straight over whoever it takes: the nearest to the click of
+//          those on screen at the click (a sailor on a ship's deck too)
+//   beam   held still where they stand at once; the beam comes straight down (0.5 s)
+//   lift   straight up the beam into the hatch, turning, "HELP!"; a straw hat or
+//          what they carried drops
+//   away   it tilts and shoots off over the edge; gone 20–40 s
+//   back   in again over somewhere else in the town (a sailor: his place on deck,
+//          if his ship is still about), beams them down and leaves
+//   seek   (nobody on screen) it sweeps its beam about the click, and leaves.
 //
 // A nuke going off under a hovering saucer drops its catch and sends it off
 // spinning. Undo, a called-off act, a new or opened town: gone at once, the
