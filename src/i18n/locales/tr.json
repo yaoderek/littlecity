@@ -1,4 +1,5 @@
 {
+  "Little City: A hand-drawn city builder in your browser": "Little City: Tarayıcında elle çizilmiş bir şehir kurma oyunu",
   "My towns could not be written just now. The town you are on is still saved.": "Kasabalarım şu an kaydedilemedi. Açık olan kasaban yine de kayıtlı.",
   "This browser will not let the town be saved, so it lasts only until you close the page.": "Bu tarayıcı kasabanın kaydedilmesine izin vermiyor; kasaba ancak sayfayı kapatana kadar kalır.",
   "Town opened. It is in My towns now too.": "Kasaba açıldı. Artık Kasabalarım'da da var.",
@@ -33,6 +34,9 @@
   "Done": "Tamam",
   "That file could not be read.": "O dosya okunamadı.",
   "Fly (F)": "Uç (F)",
+  "Fly": "Uç",
+  "Land": "İn",
+  "Drag to look": "Bakmak için sürükle",
   "Esc to land": "İnmek için Esc",
   "W A S D fly · Space up · Shift down · wheel for speed": "W A S D uç · Boşluk yukarı · Shift aşağı · tekerlek hız",
   "Speed ×{speed}": "Hız ×{speed}",
@@ -396,7 +400,6 @@
   "Or grow a whole town on a new island, a harbour town, a castle town or a farming village, and just watch it.": "Ya da yeni bir adada koca bir kasaba büyüt (bir liman kasabası, bir kale kasabası ya da bir çiftçi köyü) ve sadece izle.",
   "Works on computers, iPhone, iPad and Android. Made by Derek Yao.": "Bilgisayarda, iPhone'da, iPad'de ve Android'de çalışır. Yapımcısı Derek Yao.",
   "The guide: every special building and how to get it": "Rehber: her özel bina ve nasıl elde edilir",
-  "Little City: A hand-drawn city builder in your browser": "Little City: Tarayıcında elle çizilmiş bir şehir kurma oyunu",
   "Little City: your town, drawn in ink and pencil": "Little City: kasaban, mürekkep ve kurşun kalemle çizilmiş",
   "The Auto block": "Otomatik blok",
   "Houses": "Evler",

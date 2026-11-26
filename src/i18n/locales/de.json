@@ -1,4 +1,5 @@
 {
+  "Little City: A hand-drawn city builder in your browser": "Little City: Ein handgezeichnetes Städtebau-Spiel im Browser",
   "My towns could not be written just now. The town you are on is still saved.": "„Meine Städte“ konnte gerade nicht gespeichert werden. Die Stadt, in der du bist, ist weiterhin gespeichert.",
   "This browser will not let the town be saved, so it lasts only until you close the page.": "Dieser Browser lässt die Stadt nicht speichern, also bleibt sie nur, bis du die Seite schließt.",
   "Town opened. It is in My towns now too.": "Stadt geöffnet. Sie ist jetzt auch unter „Meine Städte“.",
@@ -33,6 +34,9 @@
   "Done": "Fertig",
   "That file could not be read.": "Diese Datei ließ sich nicht lesen.",
   "Fly (F)": "Fliegen (F)",
+  "Fly": "Fliegen",
+  "Land": "Landen",
+  "Drag to look": "Zum Umsehen ziehen",
   "Esc to land": "Esc zum Landen",
   "W A S D fly · Space up · Shift down · wheel for speed": "W A S D fliegen · Leertaste hoch · Umschalt runter · Mausrad für Tempo",
   "Speed ×{speed}": "Tempo ×{speed}",
@@ -396,7 +400,6 @@
   "Or grow a whole town on a new island, a harbour town, a castle town or a farming village, and just watch it.": "Oder lass eine ganze Stadt auf einer neuen Insel wachsen, eine Hafenstadt, eine Burgstadt oder ein Bauerndorf, und schau einfach zu.",
   "Works on computers, iPhone, iPad and Android. Made by Derek Yao.": "Läuft auf Computern, iPhone, iPad und Android. Gemacht von Derek Yao.",
   "The guide: every special building and how to get it": "Das Handbuch: jedes besondere Gebäude und wie du es bekommst",
-  "Little City: A hand-drawn city builder in your browser": "Little City: Ein handgezeichnetes Städtebau-Spiel im Browser",
   "Little City: your town, drawn in ink and pencil": "Little City: deine Stadt, gezeichnet mit Tinte und Bleistift",
   "The Auto block": "Der Auto-Block",
   "Houses": "Häuser",
