@@ -2075,3 +2075,21 @@ bring more raiders (no one-at-a-time limit) → raid agent
 (`af67b2b62016bdcfb`, `swarm/barbarians`), resumed, with the new house
 rules (no deploy, no attribution, translations in the same change,
 other chats in the harbour code).
+
+**Derek, 2026-11-25 late: "ufo looks good to me. publish it on
+deploy."** Signed off on the :5180 preview (`45f3e75`). The
+orchestrator merged `preview/ufo-fixes` into the working branch
+(`9049eb2`, no conflicts, `.env.production` intact) and started the
+gate. While it ran, the languages chat merged `9049eb2` into
+`feat/languages`, added the UFO's reworded line in German and Turkish,
+fast-forwarded the working branch to `ab28224` and published from
+there (22:14). So the UFO's fixes went live in that publish, not in
+one of the orchestrator's: the live site serves `app-CKQ7H0ml.js`, its
+shader chunk carries the more opaque beam, and the three-saucer line
+is gone from the bundle. Gate: typecheck and lint on `9049eb2`, the
+test run began two minutes before the branch moved to `ab28224`, so
+the tests ran on a mix of the two: 207 files, 2,552 passed, 12
+skipped, none timed out. Not re-run on `ab28224` alone. Also from
+Derek: the castle's garrison should fight raiders and can repel one
+raid → raid agent, same round as landing where clicked and spamming
+(local only, needs his sign-off).
