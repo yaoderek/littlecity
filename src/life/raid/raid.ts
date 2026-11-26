@@ -1172,7 +1172,7 @@ export class Raid {
     let best: { r: Raider; q: Person; d: number } | null = null;
     for (const r of this.raiders) {
       const p = r.person;
-      if (!p || r.role === 'chief' || r.routed || r.beaten || !p.visible || p.scuffle || (p.mode !== 'walk' && p.mode !== 'linger')) continue;
+      if (!p || r.role === 'chief' || r.routed || r.beaten || !p.visible || p.scuffle || p.inCloud || (p.mode !== 'walk' && p.mode !== 'linger')) continue;
       if (p.mode === 'walk' && p.walk && p.walk[p.at]!.kind !== 'move') continue;
       for (const q of board.crowd.people) {
         if (q.raider || q.child || !q.visible || q.scuffle || q.leaving || (q.mode !== 'walk' && q.mode !== 'linger')) continue;
@@ -1355,6 +1355,65 @@ export class Raid {
     this.lootTargets = all.filter((t) => t.loots && inQ(t) < 8).sort((a, b) => (rich.has(a.role) ? -4 : 0) + inQ(a) - ((rich.has(b.role) ? -4 : 0) + inQ(b)) || a.structure - b.structure);
   }
 
+  // ─────────────────────────────────────────── the garrison (sally.ts) ──
+
+  /** Raiders held where they stand in a brawl with a soldier (hidden in its dust cloud). */
+  readonly pinned = new Set<Raider>();
+  /** The castle's garrison drove them off: back to the ship early, leaving what they took. */
+  repelled = false;
+
+  /** A soldier has him: he stops where he is, in the dust cloud. False if he cannot be held (thrown, gone). */
+  pin(r: Raider, board: Board): boolean {
+    const p = r.person;
+    if (!p || r.where !== 'ashore' || (p.mode !== 'walk' && p.mode !== 'linger') || !p.visible || p.scuffle) return false;
+    // Whatever he carried is dropped (it goes back to its owners).
+    p.load = null;
+    board.assign(p, { chain: this.chainOf(board), at: 0, steps: [board.stepAt(p.cell, { spot: { x: p.x, z: p.z }, face: NaN, pose: 'stand', linger: 1e6, tag: 'raid:brawl' })] });
+    p.inCloud = true;
+    this.pinned.add(r);
+    return true;
+  }
+
+  /** The brawl over: he lost (dizzy on the ground a moment, then he runs for the ship) or won (he carries on). */
+  unpin(r: Raider, lost: boolean, board: Board): void {
+    if (!this.pinned.delete(r)) return;
+    const p = r.person;
+    if (!p) return;
+    p.inCloud = false;
+    if (!lost) {
+      board.drop(p);
+      board.crowd.rethink(p);
+      return;
+    }
+    this.brawls++;
+    board.assign(p, { chain: this.chainOf(board), at: 0, steps: [board.stepAt(p.cell, { spot: { x: p.x, z: p.z }, face: p.heading, pose: 'sit', linger: RAID.dazed, tag: 'raid:dazed', done: () => {
+      r.beaten = true;
+      this.beatenCount++;
+      board.drop(p);
+      board.crowd.rethink(p);
+    } })] });
+  }
+
+  /** Driven off: the horn early, all back to the ship, nothing more burnt and nothing carried off. */
+  repel(board: Board): void {
+    if (this.repelled) return;
+    this.repelled = true;
+    this.burnTargets = [];
+    this.lootTargets = [];
+    // What they had taken is left where it lay (the pile cleared, nothing aboard).
+    for (const r of this.raiders) {
+      r.carry = null;
+      if (r.person) r.person.load = null;
+    }
+    for (const pile of this.piles) {
+      const store = board.stores.get(pile.key);
+      if (store) while (board.take(store)) {
+        // Back to their owners.
+      }
+    }
+    if (this.beat === 'ashore' || this.beat === 'landing' || this.beat === 'sighted') this.recall(board);
+  }
+
   /** The horn: all back to the ships. */
   private recall(board: Board): void {
     this.setBeat('recall');
@@ -1362,7 +1421,7 @@ export class Raid {
     const at = chief?.person ?? null;
     this.host.sound({ type: 'horn', x: at?.x ?? this.site.landings[0]!.x, z: at?.z ?? this.site.landings[0]!.z, long: true });
     for (const r of this.raiders) {
-      if (r.where !== 'ashore' || !r.person) continue;
+      if (r.where !== 'ashore' || !r.person || this.pinned.has(r)) continue;
       r.cry = r.role === 'chief' ? 2.2 : 0;
       board.drop(r.person);
       board.crowd.rethink(r.person);
@@ -1373,7 +1432,7 @@ export class Raid {
   private leaveBehind(board: Board): void {
     this.heartless = true;
     for (const r of this.raiders) {
-      if (r.where !== 'ashore') continue;
+      if (r.where !== 'ashore' || this.pinned.has(r)) continue;
       r.routed = true;
       if (r.person && board.plans.has(r.person)) board.drop(r.person);
       if (r.person) board.crowd.rethink(r.person);
@@ -1388,7 +1447,7 @@ export class Raid {
     this.heartless = true;
     this.setBeat('recall');
     for (const r of this.raiders) {
-      if (r.where !== 'ashore' || !r.person) continue;
+      if (r.where !== 'ashore' || !r.person || this.pinned.has(r)) continue;
       r.routed = true;
       r.cry = 0;
       board.drop(r.person);
@@ -1461,7 +1520,7 @@ export class Raid {
       // The vessel is still there to go to.
       if (r.vessel === 0 ? this.shipState !== 'beached' : this.boatState[i] !== 'wait') continue;
       const pile = board.stores.get(this.piles[r.landing]!.key);
-      r.carry = p.load ?? (pile ? board.take(pile) : null);
+      r.carry = this.repelled ? null : (p.load ?? (pile ? board.take(pile) : null));
       p.load = null;
       this.boarded.add(p);
       board.unclaim(p);
@@ -1558,7 +1617,7 @@ export class Raid {
             t.done = true;
             t.by = null;
             r.target = null;
-            const lit = this.host.director.ignite(t.cell);
+            const lit = !this.repelled && this.host.director.ignite(t.cell);
             if (lit) {
               this.burnt++;
               r.fires++;
@@ -1700,7 +1759,8 @@ export class Raid {
     const lc = board.centre(l.cell);
     return board.stepAt(l.cell, { spot: { x: lc.x - l.ox * 0.15 + (rand(this.seed, 'px', r.i, r.trips) - 0.5) * 0.4, z: lc.z - l.oz * 0.15 + (rand(this.seed, 'pz', r.i, r.trips) - 0.5) * 0.4 }, face: Math.atan2(l.ox, l.oz), pose: 'tend', linger: 0.6, load: loot, brisk: true, tag: 'raid:pile', done: (q) => {
       const store = board.stores.get(pile.key);
-      if (store && q.load && board.put(store, q.load)) q.load = null;
+      if (this.repelled) q.load = null;
+      else if (store && q.load && board.put(store, q.load)) q.load = null;
       else if (q.load) {
         // The pile is full: it goes aboard with them later.
         r.carry = q.load;
@@ -1787,6 +1847,8 @@ export class Raid {
     if (this.ended) return;
     this.ended = true;
     this.beat = 'done';
+    for (const r of this.pinned) if (r.person) r.person.inCloud = false;
+    this.pinned.clear();
     for (const r of this.raiders) {
       r.fig?.release();
       r.fig = null;

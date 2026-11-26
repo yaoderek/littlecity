@@ -44,6 +44,22 @@ export const RAID = defineStyle(
     ceiling: 40,
     ceilingPhone: 24,
     tokenCrew: 3,
+    /**
+     * The castle's garrison (sally.ts): seconds it rests after marching home before it will sally again;
+     * its march out at the double and its run at a raider (cells a second); a brawl's seconds, at least and at
+     * most; a soldier's chance of winning one alone (two on one, nearly always); seconds the loser sits dizzy;
+     * and the share of a band beaten that breaks it.
+     */
+    /** A castle's garrison turns out against raids at all (1), or never (0: for comparing, in tests). */
+    sally: 1,
+    garrisonRest: 120,
+    sallyMarch: 1.05,
+    sallyRun: 1.35,
+    brawlMin: 2.2,
+    brawlMax: 3.6,
+    soldierWins: 0.8,
+    dazed: 2.6,
+    breaks: 0.4,
   },
   {
     sail: [0.5, 4, 0.1],
@@ -57,5 +73,8 @@ export const RAID = defineStyle(
     ceiling: [4, 200, 1],
     ceilingPhone: [4, 200, 1],
     tokenCrew: [1, 8, 1],
+    garrisonRest: [0, 900, 10],
+    soldierWins: [0, 1, 0.05],
+    breaks: [0.1, 1, 0.05],
   },
 );
