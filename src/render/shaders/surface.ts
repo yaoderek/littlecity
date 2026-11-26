@@ -532,12 +532,13 @@ void main(){
       float walls = smoothstep(0.35, 0.85, x) * body;
       float core = exp(-x * x * 5.0);
       // Strong under the hatch, thinning toward the ground; melting into the pool at its foot.
-      float along = mix(1.0, 0.42, smoothstep(0.0, 1.0, g)) * (1.0 - 0.6 * smoothstep(0.86, 1.0, g));
+      float along = mix(1.0, 0.52, smoothstep(0.0, 1.0, g)) * (1.0 - 0.6 * smoothstep(0.86, 1.0, g));
       // Bands of slightly deeper turquoise travelling along it, curved like rings seen from above.
       float gg = fract(g * 4.0 + vParams.y + 0.05 * sqrt(max(0.0, 1.0 - u * u)));
       float band = smoothstep(0.0, 0.05, gg) * (1.0 - smoothstep(0.06, 0.2, gg)) * body;
       float wash = body * along * (0.55 + 0.25 * core + 0.35 * walls);
-      a = m * grain * (wash * 0.5 + band * 0.12);
+      // A little more body than at first (Derek, 2026-11-25: "slightly more opaque, it's a bit thin").
+      a = m * grain * (wash * 0.66 + band * 0.14);
       c = mix(pale, tint, 0.72 + 0.25 * band + 0.03 * walls);
       lift = m * wash * 0.1;
       add = m * wash * (0.04 + 0.5 * uGlow) * grain;
@@ -562,7 +563,7 @@ void main(){
       lift = m * (0.12 * glow + 0.12 * ring);
       add = m * (glow * 0.7 + ring * 0.5) * (0.03 + 0.55 * uGlow);
     }
-    a = clamp(a, 0.0, 0.58);
+    a = clamp(a, 0.0, 0.7);
     oColor = vec4(c * a + pale * lift + tint * add + vec3(add * 0.35), a);
   } else {
     // A shaft of light. Seen end on (pointing at you) its walls are edge-on: it fades away there,
