@@ -4,7 +4,7 @@
 // same raid with the garrison kept in; a second party is not repelled; undo puts the soldiers straight back;
 // a town with no castle raids as before. Waits on state, never on the clock.
 
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { encodeTown } from '@/world/save';
 import { setStyle } from '@/core/style';
 import { keyX, keyZ } from '@/core/grid';
@@ -19,7 +19,8 @@ import { raidsOf } from './raids';
 import { salliesOf } from './sally';
 import type { Raid } from './raid';
 
-const LONG = FULL ? 600_000 : 300_000;
+// Generous: the gate runs files side by side on a loaded machine (timed out at 300 s once with nothing wrong).
+const LONG = FULL ? 900_000 : 600_000;
 
 function town(name: string): Turmoil {
   const built = buildScenario(findScenario(name)!);
@@ -48,6 +49,10 @@ function run(t: Turmoil, watch?: (raid: Raid) => void): { raid: Raid; burnt: num
 afterEach(() => {
   setStyle('raid', 'sally', 1);
 });
+// A shorter stay ashore than a raid's own (both runs of the comparison alike): the file in half the time.
+const ashore = RAID.ashore;
+beforeAll(() => setStyle('raid', 'ashore', 50));
+afterAll(() => setStyle('raid', 'ashore', ashore));
 
 describe('the garrison against a raid', () => {
   test('one party: the garrison marches out, meets the band and breaks it; it goes early with little burnt and nothing carried off; the soldiers go back to their round', () => {
@@ -149,14 +154,10 @@ describe('the garrison against a raid', () => {
   test('no castle, no garrison: a raid as before', () => {
     const t = town('grown-market');
     expect(garrisonsOf(t.stage).length).toBe(0);
-    const ashore = RAID.ashore;
     setStyle('raid', 'ashore', 30);
-    try {
-      const r = run(t);
-      expect(r.raid.repelled).toBe(false);
-      expect(salliesOf(t.stage).count).toBe(0);
-    } finally {
-      setStyle('raid', 'ashore', ashore);
-    }
+    const r = run(t);
+    expect(r.raid.repelled).toBe(false);
+    expect(salliesOf(t.stage).count).toBe(0);
+    setStyle('raid', 'ashore', 50);
   }, LONG);
 });

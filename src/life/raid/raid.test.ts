@@ -18,7 +18,8 @@ import { crittersOf } from '../mischief/critters';
 import type { Raid } from './raid';
 import { mapEdge } from '@/rules/life/ship-routes';
 
-const LONG = FULL ? 400_000 : 200_000;
+// Generous: the gate runs files side by side on a loaded machine (timed out at 200 s with nothing wrong).
+const LONG = FULL ? 600_000 : 400_000;
 
 function town(name: string): Turmoil {
   const built = buildScenario(findScenario(name)!);
