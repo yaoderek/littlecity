@@ -1289,7 +1289,7 @@ back.
   ahead (12 s at most). No building is gone for by two parties, and nothing
   is looted twice while raids are on. Raiders alive at once, all parties
   together: at most 40 (24 on a phone-sized screen); past that a party is a
-  token crew of 3. One note ("Raiders off the coast!") while any raid is on;
+  token crew of 3, and past half as many again the chief comes alone. One note ("Raiders off the coast!") while any raid is on;
   at most four raid sounds at once and one horn at a time; at most six war
   cry balloons. All the parties share one open act: one undo puts the town
   back as it was before the first of them and ends them all.

@@ -270,12 +270,15 @@ export function planRaid(shape: ShapePlan, nav: NavGraph, seed: number, opts: Pl
   if (!heart) return null;
   const field = raidField(shape, opts.extra ?? []);
   const avoid = opts.avoid ?? [];
-  const shore = landingsOf(shape, nav, field).filter((l) => !avoid.some((a) => Math.hypot(a.x - l.x, a.z - l.z) < 2.6));
-  if (shore.length === 0) return null;
+  const all = landingsOf(shape, nav, field);
+  const clear = (gap: number): Landing[] => all.filter((l) => !avoid.some((a) => Math.hypot(a.x - l.x, a.z - l.z) < gap));
+  const shore = clear(2.6);
   if (opts.near) {
-    const site = planAt(field, shore, opts.near, opts.kind, seed);
+    // Every shore near it taken by other parties: closer in beside them, rather than not at all.
+    const site = planAt(field, shore, opts.near, opts.kind, seed) ?? (avoid.length ? planAt(field, clear(1.2), opts.near, opts.kind, seed) : null);
     return site ? { ...site, heart } : null;
   }
+  if (shore.length === 0) return null;
   const focus = heart;
   const towns = (l: Landing): number => Math.hypot(l.x - heart.x, l.z - heart.z);
   const near = (l: Landing): number => Math.hypot(l.x - focus.x, l.z - focus.z);
@@ -349,7 +352,7 @@ function landingAt(field: SeaField, l: Landing, pick: number): SiteFor | null {
 function planAt(field: SeaField, shore: readonly Landing[], at: { x: number; z: number }, kind: RaidKind | undefined, seed: number): SiteFor | null {
   const d = (l: Landing): number => Math.hypot(l.x - at.x, l.z - at.z);
   const ranked = [...shore].sort((a, b) => d(a) - d(b) || a.cell - b.cell);
-  for (const l of ranked.slice(0, 60)) {
+  for (const l of ranked.slice(0, 160)) {
     const beach = l.sand || l.near.some((n) => n.sand);
     if (kind !== 'boats' && (kind === 'landing' || beach)) {
       const site = landingAt(field, l, 0);

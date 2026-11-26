@@ -52,13 +52,17 @@ try {
   const base = await time(frames);
   console.log(`no raid: median ${base.median.toFixed(1)} ms, p95 ${base.p95.toFixed(1)} ms  [${await state()}]`);
   for (const n of sets) {
-    await page.evaluate((count) => {
+    const refused = await page.evaluate((count) => {
       const lc = window.__lc;
+      const why = [];
       for (let k = 0; k < count; k++) {
         const a = (k / Math.max(1, count)) * Math.PI * 2;
-        lc.raids.summon({ at: { x: 24 + Math.cos(a) * 15, z: 24 + Math.sin(a) * 15 } });
+        const w = lc.raids.summon({ at: { x: 24 + Math.cos(a) * 15, z: 24 + Math.sin(a) * 15 } });
+        if (w) why.push(w);
       }
+      return why;
     }, n);
+    if (refused.length) console.log(`refused ${refused.length}: ${[...new Set(refused)].join('; ')}`);
     await play(warm);
     const t = await time(frames);
     console.log(`${n} raid(s): median ${t.median.toFixed(1)} ms, p95 ${t.p95.toFixed(1)} ms  [${await state()}]`);

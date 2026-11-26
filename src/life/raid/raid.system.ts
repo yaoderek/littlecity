@@ -214,7 +214,9 @@ function start(st: State, s: Summon): string | null {
   // A ceiling on raiders alive at once (every click brings another party): past it, a token crew.
   let alive = 0;
   for (const r of raids.list) for (const x of r.raiders) if (x.where !== 'lost') alive++;
-  const most = Math.max(RAID.tokenCrew, (phone() ? RAID.ceilingPhone : RAID.ceiling) - alive);
+  const ceiling = phone() ? RAID.ceilingPhone : RAID.ceiling;
+  // Well past it (a storm of clicks): the chief alone, standard up, so the ship still comes.
+  const most = alive >= ceiling * 1.5 ? 1 : Math.max(RAID.tokenCrew, ceiling - alive);
   // Buildings are counted by structure for the band's size.
   const structures = new Set<number>();
   for (const [c, k] of shape.kinds) if (KINDS[k as keyof typeof KINDS]?.building) structures.add(shape.structureAt.get(c) ?? -1);
