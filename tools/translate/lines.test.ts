@@ -35,7 +35,8 @@ describe('languages', () => {
       const want = details(l.key).join(',');
       if (l.plural) {
         if (typeof v !== 'object' || !v.other) wrong.push(`${l.key}: a counted line needs { "other": … } (and its other forms)`);
-        else for (const [form, s] of Object.entries(v)) if (details(s).join(',') !== want) wrong.push(`${l.key} [${form}]: ${s}`);
+        // A form other than `other` may leave the count out ("a minute ago", "il y a une minute").
+        else for (const [form, s] of Object.entries(v)) if (details(s).join(',') !== want && !(form !== 'other' && details(s).join(',') === details(l.key).filter((d) => d !== 'n').join(','))) wrong.push(`${l.key} [${form}]: ${s}`);
       } else if (typeof v !== 'string') wrong.push(`${l.key}: should be a plain line`);
       else if (details(v).join(',') !== want) wrong.push(`${l.key}: ${v}`);
       if (typeof v === 'string' && v.trim() === '') wrong.push(`${l.key}: empty`);

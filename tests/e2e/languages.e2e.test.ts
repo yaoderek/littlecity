@@ -37,11 +37,14 @@ describe('languages', () => {
   });
 
   test('the menu changes the language and keeps the town', async () => {
-    const { page, errors } = await app.open('/', { locale: 'en-US' });
+    const { page, errors } = await app.open('/?seed=5&gen=1', { locale: 'en-US' });
     await page.waitForFunction('window.__lc !== undefined');
+    const before = (await page.evaluate('window.__lc.world().blocks.size')) as number;
     await page.mouse.click(640, 400);
-    await page.waitForFunction('window.__lc.world().blocks.size === 1 && window.__lc.keeper.current !== null');
+    await page.waitForFunction(`window.__lc.world().blocks.size === ${before + 1} && window.__lc.keeper.current !== null`);
     const seed = await page.evaluate('window.__lc.world().seed');
+    // A player's address has no ?seed= (that would open a fresh island again).
+    await page.evaluate(`history.replaceState(null, '', '/?season=summer&weather=clear')`);
     await page.click('[data-ui="menu-button"]');
     await page.click('[data-menu="language"]');
     await Promise.all([page.waitForNavigation(), page.click('[data-menu="lang-ko"]')]);
@@ -50,7 +53,7 @@ describe('languages', () => {
     expect(await page.evaluate(menuLabel)).toBe(table('ko').Menu);
     expect(await page.evaluate(`localStorage.getItem('little-city.lang')`)).toBe('ko');
     expect(await page.evaluate('window.__lc.world().seed')).toBe(seed);
-    expect(await page.evaluate('window.__lc.world().blocks.size')).toBe(1);
+    expect(await page.evaluate('window.__lc.world().blocks.size')).toBe(before + 1);
     expect(errors).toEqual([]);
   });
 });

@@ -121,6 +121,25 @@ export function createTray(start: Partial<TrayState> = {}): Tray {
     tabs.append(tab);
   }
 
+  // Drawer names are longer in some languages (Spanish "Herramientas"): where the row of tabs does not fit
+  // (a phone), the names get smaller, never cut or pushed off the edge. Again whenever the width changes.
+  let fittedWidth = -1;
+  const fitTabs = (): void => {
+    const width = tabs.clientWidth;
+    if (width === fittedWidth || width === 0) return;
+    fittedWidth = width;
+    tabs.style.removeProperty('--lc-tab-font');
+    const first = tabButtons.values().next().value;
+    if (!first) return;
+    let size = parseFloat(getComputedStyle(first).fontSize);
+    const over = (): boolean => tabs.scrollWidth > tabs.clientWidth + 1 || [...tabButtons.values()].some((b) => b.scrollWidth > b.clientWidth + 1);
+    while (over() && size > 9) {
+      size -= 0.5;
+      tabs.style.setProperty('--lc-tab-font', `${size}px`);
+    }
+  };
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => fitTabs()).observe(tabs);
+
   const renderRow = (): void => {
     row.replaceChildren();
     drawerItems(state.drawer).forEach((item, index) => {
