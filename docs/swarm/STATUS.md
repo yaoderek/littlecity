@@ -2103,3 +2103,26 @@ water" → agent on `fix/fishing-line` (the line ends at the fisher's
 feet, in mid-air above the sea; reach the surface with a float; find
 what reads as chopped). Both local only, one preview for his sign-off
 together with nothing else unless the raid round is ready.
+
+**Windows start freeze: live as `c1d6604` (2026-11-25, 22:50; the
+analytics chat, not the orchestrator).** Derek: "merge it in this is
+much better" and "deploy live on littlecity". Cause, found on GitHub's
+Windows machines: Direct3D's compiler takes about 4 s over each variant
+of the surface shader, and a shader that writes two targets is built a
+second time, with the whole browser frozen, at its first draw. Now,
+where the renderer says Direct3D, the town is drawn into one packed
+target and a small pass splits it (`src/render/packed.ts`; `?draw=packed`
+or `?draw=plain` forces either); the first frame waits for its shaders
+without blocking (`view.started()`); Firefox there, which cannot build in
+the background, leaves fly mode's and the bare trees' shaders until
+needed (`view.buildsAhead()`). Off Windows the 18 shaders the browser is
+given are byte for byte the same. Measured there without a graphics
+card: Chrome's frames stopped 8 to 15 s at the start and 6 to 14 s on
+the first Fly before, no such stall after; Firefox about 30 s at the
+start before, about 8 s after (its first Fly still waits about 9 s); 0
+pixels differ in four scenes. Gate on a GitHub Linux machine (this Mac
+was at load 40): typecheck, lint, 182 unit files passed. NOT measured:
+a real graphics card. The Windows tests live on the branch
+`test/windows-wait` (workflows that run only there, `tools/wintest`).
+Any new variant of the surface shader costs Windows players about 4 s
+of building each: keep them few.
