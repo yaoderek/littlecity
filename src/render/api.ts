@@ -157,6 +157,12 @@ export interface TownView {
    * background): render draws nothing until then. Absent or true: what render drew is on screen.
    */
   started?(): boolean;
+  /**
+   * False where building a shader stops the page for seconds and cannot be done in the background (Firefox
+   * on Windows): there, the shaders that many never need (fly mode's, the bare trees') are left until they
+   * are needed. Absent or true: they are built ahead, while the page is idle.
+   */
+  buildsAhead?(): boolean;
 
   /**
    * Added for the quality governor (src/render/quality.ts). How sharp the page is drawn: the levels

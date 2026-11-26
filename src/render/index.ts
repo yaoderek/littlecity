@@ -1286,6 +1286,8 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
   // Packed (Direct3D): the driver takes seconds over them, in the background, and nothing is drawn until
   // they are done, so the page stays alive meanwhile instead of freezing in its first frame (`starting`).
   let starting: Set<THREE.Material> | null = packed ? new Set() : null;
+  /** Whether shaders are worth building before they are needed: not where each one stops the page (api.ts). */
+  const buildsAhead = !packed || renderer.extensions.has('KHR_parallel_shader_compile');
   let startFence: WebGLSync | null = null;
   const compile = (...materials: THREE.Material[]): void => {
     const all = new THREE.Scene();
@@ -1317,7 +1319,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
     starting = null;
     // The fly mode's are as slow: built now, in the background, not at the first tap. (Only where they can
     // be built in the background: in Firefox the town would wait behind them.)
-    if (renderer.extensions.has('KHR_parallel_shader_compile')) queueMicrotask(() => void view.prepareEye?.());
+    if (buildsAhead) queueMicrotask(() => void view.prepareEye?.());
     return true;
   };
 
@@ -1504,7 +1506,7 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       // And what is first drawn in the middle of play, in one frame: rain and snow, a ship at the edge of the
       // map, the leaves coming down.
       void renderer.compileAsync(precip.scene, camera).catch(() => undefined);
-      void renderer.compileAsync(new THREE.Scene().add(screenMesh(capMaterial), screenMesh(bareMaterial)), camera).catch(() => undefined);
+      void renderer.compileAsync(new THREE.Scene().add(screenMesh(capMaterial), ...(buildsAhead ? [screenMesh(bareMaterial)] : [])), camera).catch(() => undefined);
     },
     gpu() {
       return gpuName;
@@ -1522,6 +1524,9 @@ export function createTownView(canvas: HTMLCanvasElement, opts: ViewOptions = {}
       return eyePose ? { ...eyePose, eye: [eyePose.eye[0], eyePose.eye[1], eyePose.eye[2]] } : null;
     },
 
+    buildsAhead() {
+      return buildsAhead;
+    },
     started() {
       return starting === null;
     },
