@@ -173,6 +173,8 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
   const clouds: InstanceHandle[] = [];
   const pops: InstanceHandle[] = [];
   const stars: InstanceHandle[] = [];
+  /** Hidden last frame, to be let go now. */
+  const later: InstanceHandle[] = [];
   const take = (pool: InstanceHandle[], n: number, mesh: (k: number) => MeshData): InstanceHandle => {
     while (pool.length <= n) pool.push(own.stage.spawnMesh(mesh(pool.length), HIDDEN));
     return pool[n]!;
@@ -346,7 +348,11 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
   const finish = (s: Sally, rest: boolean): void => {
     for (const b of s.brawls) if (b.r.person) b.r.person.inCloud = false;
     s.brawls.length = 0;
-    s.banner?.release();
+    // Hidden now, let go next frame (nothing goes while it is drawn).
+    if (s.banner) {
+      s.banner.setVisible(false);
+      later.push(s.banner);
+    }
     s.banner = null;
     if (s.scene && raids.board) scenesOf(raids.board).end(s.scene);
     s.scene = null;
@@ -354,10 +360,11 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
     list.splice(list.indexOf(s), 1);
     if (rest) resting.set(s.g.key, now + RAID.garrisonRest);
     // The last one in: the drawings let go (nothing of it left).
+    hideArt();
     if (list.length === 0) {
-      for (const h of [...clouds, ...pops, ...stars]) h.release();
+      later.push(...clouds, ...pops, ...stars);
       clouds.length = pops.length = stars.length = 0;
-    } else hideArt();
+    }
   };
 
   const endBrawl = (board: Board, s: Sally, b: Brawl, quiet = false): void => {
@@ -730,6 +737,7 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
     /** Every frame: garrisons turn out against raids sighted, and those out go on. */
     step(dt: number, seconds: number): void {
       now += dt;
+      for (const h of later.splice(0)) h.release();
       const board = raids.board;
       for (const [k, until] of resting) if (now >= until) resting.delete(k);
       const garrisons = garrisonsOf(stage);
@@ -756,6 +764,7 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
     },
     dispose(): void {
       for (const s of [...list]) finish(s, false);
+      for (const h of later.splice(0)) h.release();
       for (const h of [...clouds, ...pops, ...stars]) h.release();
       clouds.length = pops.length = stars.length = 0;
     },
