@@ -15,6 +15,8 @@ import { mischiefDrawn } from './owned';
 import { UFO, ufosOf } from './ufo.system';
 import { SAUCER } from './ufo-art';
 import { throwerOf } from './thrown.system';
+import { harbourOf, type Ship } from '../ships/visit';
+import { rigOf } from '@/parts/actors/ships/rig';
 
 function grown(): Turmoil {
   const built = buildScenario(findScenario('grown-town-1')!);
@@ -302,4 +304,98 @@ describe('the UFO', () => {
     const after = ids(t);
     for (const id of before) expect(after).toContain(id);
   }, 300_000);
+});
+
+describe('the UFO and the sailors', () => {
+  /** The harbour town, run until a ship lies moored with sailors standing on deck. */
+  const harbourTown = (): { t: Turmoil; ship: Ship } => {
+    const built = buildScenario(findScenario('grown-harbour')!);
+    const t = createTurmoil({ world: built.world, terrain: built.terrain });
+    const harbour = harbourOf(t.stage)!;
+    let ship: Ship | undefined;
+    for (let i = 0; i < 900 && !ship; i++) {
+      t.run(1);
+      ship = harbour.ships.find((s) => s.phase === 'moored' && s.t > 2 && s.t < 20 && (s.crew?.deckHands().length ?? 0) > 0);
+    }
+    expect(ship).toBeDefined();
+    return { t, ship: ship! };
+  };
+
+  /** Seconds from now until the ship casts off (leaves its berth). */
+  const castOff = (t: Turmoil, ship: Ship, each?: () => void): number => {
+    let s = 0;
+    while (s < 400 && ship.phase === 'moored') {
+      t.run(0.1);
+      s += 0.1;
+      each?.();
+    }
+    return s;
+  };
+
+  test('a click on a moored ship takes a sailor off its deck: the ship sails on time short a hand, he comes back to it, and nobody is lost', () => {
+    // Without the UFO, the same town: when the ship casts off.
+    const control = harbourTown();
+    const due = castOff(control.t, control.ship);
+
+    const { t, ship } = harbourTown();
+    const crew = ship.crew!;
+    const ufos = ufosOf(t.stage)!;
+    const crowd = crowdOf(t.stage)!;
+    const before = ids(t);
+    const hands = crew.hands;
+    const sailor = crew.deckHands()[0]!;
+    expect(ufos.call(sailor.x, sailor.y, sailor.z)).toBe(true);
+    t.run(0.05);
+    const s = ufos.saucers[0]!;
+    // It goes for him (nobody of the town is nearer the click than a man on deck).
+    expect(s.sailor?.hand.i).toBe(sailor.i);
+    let lifted = false, overMasts = Infinity, count = 0;
+    const left = castOff(t, ship, () => {
+      if (s.phase === 'lift' && s.person) {
+        expect(s.sailor).not.toBeNull();
+        lifted = true;
+        // Off the deck, short a hand aboard, and his saucer clear above the masts.
+        expect(crew.hands).toBe(hands - 1);
+        overMasts = Math.min(overMasts, s.y - SAUCER.under - (ship.m[13]! + Math.max(...rigOf(ship.kind, ship.look).masts.map((m) => m.head))));
+      }
+      // Every sailor is somewhere: aboard, or in the beam or the saucer.
+      count = Math.max(count, crew.hands + (s.person && s.person.mode !== 'gone' ? 1 : 0));
+    });
+    expect(lifted).toBe(true);
+    expect(overMasts).toBeGreaterThan(0);
+    // It does not wait for him.
+    expect(Math.abs(left - due)).toBeLessThan(1);
+    // He comes back: to his place on deck if the ship is still about, else ashore into the town.
+    for (let i = 0; i < 1200 && ufos.saucers.length > 0; i++) t.run(0.1);
+    expect(ufos.saucers.length).toBe(0);
+    const ashore = crowd.people.filter((p) => p.id.startsWith('ashore:') && p.mode !== 'gone');
+    if (ship.crew === crew) expect(crew.hands + ashore.length).toBe(hands);
+    else expect(ashore.length).toBeLessThanOrEqual(1);
+    expect(count).toBeLessThanOrEqual(hands);
+    // Nobody of the town lost.
+    const after = ids(t);
+    for (const id of before) expect(after).toContain(id);
+    t.run(5);
+    expect(mischiefDrawn(t.stage)).toBe(0);
+  }, 600_000);
+
+  test('a sailor brought back while his ship still lies moored stands at his place on deck again', () => {
+    const { t, ship } = harbourTown();
+    const crew = ship.crew!;
+    const ufos = ufosOf(t.stage)!;
+    const hands = crew.hands;
+    const sailor = crew.deckHands()[0]!;
+    ufos.call(sailor.x, sailor.y, sailor.z);
+    t.run(0.05);
+    const s = ufos.saucers[0]!;
+    for (let i = 0; i < 600 && s.phase !== 'gone'; i++) t.run(0.1);
+    expect(s.phase).toBe('gone');
+    // Back at once (the ship has not sailed).
+    s.away = 0;
+    for (let i = 0; i < 600 && s.phase !== 'leave' && s.phase !== 'done'; i++) t.run(0.1);
+    expect(ship.crew).toBe(crew);
+    expect(crew.hands).toBe(hands);
+    expect(crew.deckHands().some((d) => d.i === sailor.i) || crew.hands === hands).toBe(true);
+    expect(crowdOf(t.stage)!.people.filter((p) => p.id.startsWith('ashore:') && p.mode !== 'gone').length).toBe(0);
+  }, 600_000);
 });

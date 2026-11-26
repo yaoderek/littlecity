@@ -119,6 +119,8 @@ export interface Thrower {
   /** The Hand picks somebody up: they hang where `carry` puts them until `fling`. False if they cannot be. */
   grab(p: Person): boolean;
   carry(p: Person, x: number, y: number, z: number): void;
+  /** Somebody held is set down where the town's people do not go (the UFO's sailor, back on his ship's deck): no longer thrown, and gone from the crowd. */
+  letGo(p: Person): void;
   step(dt: number): void;
   /** Everyone back on their feet now, where the walking graph has room for them (undo, a new town). */
   reset(): void;
@@ -747,6 +749,16 @@ export function createThrower(crowd: Crowd, critters: Map<string, Critter> = new
       if (!t) return false;
       hold(t.body);
       return true;
+    },
+    letGo(p) {
+      const t = thrown.get(p);
+      if (t?.hat) pickedUp(t);
+      if (t) grips.delete(t.body);
+      thrown.delete(p);
+      thrower.beamed.delete(p);
+      p.tumble = null;
+      p.visible = false;
+      p.mode = 'gone';
     },
     carry(p, x, y, z) {
       const b = thrown.get(p)?.body;

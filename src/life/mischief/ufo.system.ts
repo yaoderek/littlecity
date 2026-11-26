@@ -39,6 +39,10 @@ import { mischiefOf, type Director } from './director';
 import { ownStage, type Owned } from './owned';
 import { throwerOf } from './thrown.system';
 import type { Thrower } from './thrower';
+import { harbourOf, type Ship } from '../ships/visit';
+import type { DeckHand } from '../ships/crew';
+import { rigOf } from '@/parts/actors/ships/rig';
+import { mapEdge } from '@/rules/life/ship-routes';
 import { alienMesh, coneMesh, domeMesh, helpMesh, lightsMesh, motesMesh, poolMesh, rimMesh, ringsMesh, SAUCER, saucerMesh, ufoShadowMesh } from './ufo-art';
 
 export const UFO = {
@@ -68,6 +72,15 @@ export const UFO = {
   elsewhere: 6,
 } as const;
 
+/** A sailor at his place on a ship's deck it may take, with his ship. */
+export interface Sailor {
+  hand: DeckHand;
+  ship: Ship;
+}
+/** Whoever it may take: somebody of the town out of doors, or a sailor on deck. */
+export type Catch = Person | Sailor;
+const isSailor = (c: Catch): c is Sailor => 'hand' in c;
+
 export type UfoPhase = 'in' | 'glide' | 'beam' | 'lift' | 'seek' | 'away' | 'gone' | 'back' | 'drop' | 'leave' | 'done';
 
 export interface Saucer {
@@ -84,8 +97,12 @@ export interface Saucer {
   ground: number;
   /** Where it was called. */
   click: { x: number; z: number };
-  /** Who it may take: the people out of doors in the camera's view when it was called (all of them in tests, with no view). */
-  pool: Person[];
+  /** Who it may take: the people out of doors, and sailors on deck, in the camera's view when it was called (all of them in tests, with no view). */
+  pool: Catch[];
+  /** The sailor it is going for, or has taken (then `person` is him, off the ship); null for one of the town's people. */
+  sailor: Sailor | null;
+  /** Bringing the sailor back to his place on his ship's deck (else to the shore). */
+  toShip: boolean;
   /** Where it holds whoever is in its beam (straight under its hatch). */
   gx: number;
   gz: number;
@@ -150,7 +167,7 @@ interface State {
   time: number;
   night: boolean;
   /** A click waiting for the next update (the stage's town and crowd are read there). */
-  calls: { x: number; y: number; z: number; pool: Person[] }[];
+  calls: { x: number; y: number; z: number; pool: Catch[] }[];
   off: () => void;
   ufos: Ufos;
   m: number[];
@@ -167,18 +184,46 @@ function takeable(p: Person, list: readonly Saucer[]): boolean {
   return !list.some((s) => s.person === p);
 }
 
-/** The nearest to (x, z) of those it may take (out of doors, and nobody another saucer has), or null. */
-export function pickPerson(pool: readonly Person[], list: readonly Saucer[], x: number, z: number): Person | null {
-  let best: Person | null = null, bestD = Infinity;
-  for (const p of pool) {
-    if (!takeable(p, list)) continue;
-    const d = Math.hypot(p.x - x, p.z - z);
+/** Where a sailor stands on deck now, if he is still standing at his place there and no saucer has him. */
+function sailorNow(c: Sailor, list: readonly Saucer[]): DeckHand | null {
+  if (list.some((s) => s.sailor && s.sailor.hand.crew === c.hand.crew && s.sailor.hand.i === c.hand.i)) return null;
+  if (c.ship.crew !== c.hand.crew || c.ship.phase === 'sinking') return null;
+  return c.hand.crew.deckHands().find((d) => d.i === c.hand.i) ?? null;
+}
+
+/** Where one it may take is now, or null if it may not take them now (indoors, taken, gone). */
+function catchAt(c: Catch, list: readonly Saucer[]): { x: number; y: number; z: number; heading: number } | null {
+  if (isSailor(c)) return sailorNow(c, list);
+  return takeable(c, list) ? c : null;
+}
+
+/** The nearest to (x, z) of those it may take (out of doors or on deck, and nobody another saucer has), or null. */
+export function pickPerson(pool: readonly Catch[], list: readonly Saucer[], x: number, z: number): Catch | null {
+  let best: Catch | null = null, bestD = Infinity;
+  for (const c of pool) {
+    const at = catchAt(c, list);
+    if (!at) continue;
+    const d = Math.hypot(at.x - x, at.z - z);
     if (d < bestD) {
       bestD = d;
-      best = p;
+      best = c;
     }
   }
   return best;
+}
+
+/** Sets whom a saucer goes for (one of the town's people, a sailor, or nobody). */
+function aim(s: Saucer, c: Catch | null): void {
+  s.person = c && !isSailor(c) ? c : null;
+  s.sailor = c && isSailor(c) ? c : null;
+}
+
+/** The top of a ship's masts now (world y): it hovers clear above them over a deck. */
+function shipTop(ship: Ship): number {
+  const rig = rigOf(ship.kind, ship.look);
+  let head = 1;
+  for (const m of rig.masts) head = Math.max(head, m.head);
+  return ship.m[5]! * (head + 0.45) + ship.m[13]!;
 }
 
 /** How tall a tree stands over its cell's floor (trunk and crown), world units. */
@@ -316,7 +361,7 @@ function stacked(st: State, x: number, z: number, y: number, self?: Saucer): num
   return h;
 }
 
-function create(st: State, stage: LifeStage, x: number, y: number, z: number, pool: Person[]): boolean {
+function create(st: State, stage: LifeStage, x: number, y: number, z: number, pool: Catch[]): boolean {
   const t = throwerOf(stage);
   const n = ++st.n;
   // To where it was called: it hovers clear of everything round there (its beam leans to whoever it takes),
@@ -327,7 +372,7 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number, po
   const from = edgePoint(cruise, n, 'in');
   const own = st.own.stage;
   const s: Saucer = {
-    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, hy), z }, ground, click: { x, z }, pool, gx: x, gz: z,
+    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, hy), z }, ground, click: { x, z }, pool, sailor: null, toShip: false, gx: x, gz: z,
     person: null, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0, wait: 0, yielded: 0, lane, hover: { x: 0, y: 0, z: 0 },
     vx: 0, vz: 0, ax: 1, az: 0,
     h: MESHES.map((mesh) => {
@@ -339,7 +384,7 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number, po
   void y;
   s.hover = { ...s.to };
   // Who it comes for is settled at the click: the nearest it may take (nobody another saucer has).
-  s.person = pickPerson(pool, st.list, x, z);
+  aim(s, pickPerson(pool, st.list, x, z));
   st.list.push(s);
   return true;
 }
@@ -360,24 +405,33 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       if (fly(s, UFO.arrive, true) < 1) break;
       // Over where it was called, it looks: the nearest person it may take (whoever the camera saw at the click);
       // over to them, or with nobody, it searches the spot and goes.
-      if (!p || !takeable(p, st.list.filter((o) => o !== s))) s.person = pickPerson(s.pool, st.list.filter((o) => o !== s), s.click.x, s.click.z);
-      phase(s, s.person ? 'glide' : 'seek');
+      {
+        const others = st.list.filter((o) => o !== s);
+        const c: Catch | null = s.sailor ?? p;
+        if (!c || !catchAt(c, others)) aim(s, pickPerson(s.pool, others, s.click.x, s.click.z));
+      }
+      phase(s, s.person || s.sailor ? 'glide' : 'seek');
       break;
     }
     case 'glide': {
       // Across at its hover height to straight over them (following them as they walk): up first wherever
       // something in its way, or another saucer, needs it higher; never down through anything.
-      if (!p || !takeable(p, st.list.filter((o) => o !== s))) {
-        s.person = pickPerson(s.pool, st.list.filter((o) => o !== s), s.x, s.z);
-        if (!s.person) phase(s, 'seek');
+      const others = st.list.filter((o) => o !== s);
+      const c: Catch | null = s.sailor ?? p;
+      const at = c ? catchAt(c, others) : null;
+      if (!c || !at) {
+        aim(s, pickPerson(s.pool, others, s.x, s.z));
+        if (!s.person && !s.sailor) phase(s, 'seek');
         break;
       }
-      const dx = p.x - s.x, dz = p.z - s.z, d = Math.hypot(dx, dz);
+      const dx = at.x - s.x, dz = at.z - s.z, d = Math.hypot(dx, dz);
       const step = Math.min(d, UFO.glide * dt);
       const nx = s.x + (d > 0 ? (dx / d) * step : 0), nz = s.z + (d > 0 ? (dz / d) * step : 0);
       // Above any saucer already hovering over a catch close by (two people side by side: one saucer over the
       // other); others on the move it gives way to, below.
       let need = hoverAt(t, st.shape, nx, nz).y;
+      // Over a ship: clear above its masts.
+      if (s.sailor) need = Math.max(need, shipTop(s.sailor.ship) + UFO.clear);
       for (const o of st.list) {
         // (Of two gliding, the later one goes over the earlier.)
         if (o === s || (o.phase !== 'beam' && o.phase !== 'lift' && o.phase !== 'seek' && o.phase !== 'drop' && !(o.phase === 'glide' && o.n < s.n))) continue;
@@ -395,17 +449,30 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.hover = { x: nx, y: s.y, z: nz };
       s.ground = hoverAt(t, st.shape, nx, nz).ground;
       if (d > 0.04) break;
+      // A sailor: off his ship's deck (it sails on short a hand), one of the town's people's ways from now.
+      let q = p;
+      if (s.sailor) {
+        const hand = s.sailor.hand;
+        q = crowd && t && hand.crew.take(hand.i) ? crowd.stray(at.x, at.y, at.z, at.heading, hand.look) : null;
+        if (!q) {
+          aim(s, null);
+          phase(s, 'seek');
+          break;
+        }
+        s.person = q;
+      }
       // Over them: they are held where they stand at once (no more walking), and the beam comes down.
-      if (!t || !t.grab(p)) {
-        s.person = null;
+      if (!q || !t || !t.grab(q)) {
+        if (q && s.sailor) giveBack(s, t);
+        aim(s, null);
         phase(s, 'seek');
         break;
       }
-      t.beamed.add(p);
-      s.gx = p.x;
-      s.gz = p.z;
-      s.gy = p.y + 0.3;
-      t.carry(p, s.gx, s.gy, s.gz);
+      t.beamed.add(q);
+      s.gx = q.x;
+      s.gz = q.z;
+      s.gy = q.y + 0.3;
+      t.carry(q, s.gx, s.gy, s.gz);
       s.x = s.gx;
       s.z = s.gz;
       phase(s, 'beam');
@@ -504,7 +571,23 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
     case 'gone': {
       if (p && t) t.carry(p, s.x, s.y + 0.1, s.z);
       if (s.t < s.away) break;
-      // Somewhere else in the town: a walkable spot away from where it took them.
+      // A sailor whose ship is still about (moored, or under way and not yet off the map): back to his place on its deck.
+      const deck = s.sailor ? deckOf(s.sailor) : null;
+      if (deck && p) {
+        s.toShip = true;
+        s.lane = freeLane(st, s);
+        s.wait = 0;
+        s.from = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'back');
+        s.x = s.from.x;
+        s.y = s.from.y;
+        s.z = s.from.z;
+        s.to = { x: deck[0], y: stacked(st, deck[0], deck[2], Math.max(hoverAt(t, st.shape, deck[0], deck[2]).y, shipTop(s.sailor!.ship) + UFO.clear)), z: deck[2] };
+        s.hover = { ...s.to };
+        s.ground = deck[1];
+        phase(s, 'back');
+        break;
+      }
+      // Somewhere else in the town: a walkable spot away from where it took them (a sailor whose ship has gone: ashore).
       const spot = crowd ? dropSpot(crowd, s) : null;
       if (!spot || !p) {
         if (p && t) {
@@ -526,10 +609,13 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.to = { x: spot.x, y: stacked(st, spot.x, spot.z, hy), z: spot.z };
       s.hover = { ...s.to };
       s.ground = spot.y;
+      s.toShip = false;
       phase(s, 'back');
       break;
     }
     case 'back': {
+      // Over a ship under way: it keeps over his place as the ship moves (or, the ship gone after all, to the shore).
+      if (s.toShip) followDeck(st, s, t, crowd);
       holdOver(st, s, dt);
       const u = fly(s, UFO.arrive, true);
       if (p && t) t.carry(p, s.x, s.y + 0.1, s.z);
@@ -545,6 +631,13 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         break;
       }
       const b = t.thrown.get(p)!.body;
+      if (s.toShip) {
+        followDeck(st, s, t, crowd);
+        if (s.toShip) {
+          s.x = s.to.x;
+          s.z = s.to.z;
+        }
+      }
       if (s.t < UFO.beamOn) {
         t.carry(p, s.x, s.y + 0.1, s.z);
         break;
@@ -557,8 +650,17 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.lean = 0;
       const u = Math.min(1, (s.t - UFO.beamOn) / UFO.lower);
       b.heading += dt * 1.2;
-      t.carry(p, s.x, s.y - 0.02 + (s.ground + 0.75 - s.y) * easeInOut(u), s.z);
+      // Onto his ship's deck, on his feet, at his place; else let go a little above the ground.
+      const floor = s.toShip ? s.ground + 0.3 : s.ground + 0.75;
+      t.carry(p, s.x, s.y - 0.02 + (floor - s.y) * easeInOut(u), s.z);
       if (u < 1) break;
+      if (s.toShip) {
+        giveBack(s, t);
+        s.from = { x: s.x, y: s.y, z: s.z };
+        s.to = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'gone');
+        phase(s, 'leave');
+        break;
+      }
       t.fling(p, 0, -0.4, 0, { dizzy: 3.5, spin: 1.5 });
       t.beamed.delete(p);
       s.person = null;
@@ -594,6 +696,57 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       }
     }
   }
+}
+
+/** Where a taken sailor's place on his ship's deck is now, if the ship is still about (not gone, sinking or off the map). */
+function deckOf(c: Sailor): [number, number, number] | null {
+  const ship = c.ship;
+  if (ship.crew !== c.hand.crew || ship.phase === 'sinking' || ship.phase === 'idle') return null;
+  const at = c.hand.crew.placeOf(c.hand.i);
+  if (!at || mapEdge(at[0], at[2]) > -2) return null;
+  return [at[0], at[1], at[2]];
+}
+
+/** Bringing a sailor back: over his place on deck as the ship moves; if the ship has gone after all, to the shore. */
+function followDeck(st: State, s: Saucer, t: Thrower | null, crowd: Crowd | null): void {
+  const deck = s.sailor ? deckOf(s.sailor) : null;
+  if (deck) {
+    const dx = deck[0] - s.to.x, dz = deck[2] - s.to.z;
+    s.to.x = deck[0];
+    s.to.z = deck[2];
+    s.hover.x = deck[0];
+    s.hover.z = deck[2];
+    s.ground = deck[1];
+    // Late in the flight in, it is over the spot already: it moves with it.
+    if (s.phase === 'back' && s.t / UFO.arrive > 0.7) {
+      s.from.x += dx;
+      s.from.z += dz;
+    }
+    return;
+  }
+  s.toShip = false;
+  const spot = crowd ? dropSpot(crowd, s) : null;
+  if (!spot) return;
+  s.from = { x: s.x, y: Math.max(s.y, cruiseOf(st, t) + s.lane * UFO.stack), z: s.z };
+  s.to = { x: spot.x, y: stacked(st, spot.x, spot.z, hoverAt(t, st.shape, spot.x, spot.z).y, s), z: spot.z };
+  s.hover = { ...s.to };
+  s.ground = spot.y;
+  s.t = 0;
+  phase(s, 'back');
+}
+
+/** A sailor back on his ship's deck: gone from the town's people, at his place among the crew again. */
+function giveBack(s: Saucer, t: Thrower | null): void {
+  const p = s.person, c = s.sailor;
+  if (p && t) t.letGo(p);
+  else if (p) {
+    p.mode = 'gone';
+    p.visible = false;
+  }
+  if (c) c.hand.crew.giveBack(c.hand.i);
+  s.person = null;
+  s.sailor = null;
+  s.toShip = false;
 }
 
 /** Where it brings them back: a walkable spot (a street, a square, the beach) away from where it took them. */
@@ -772,7 +925,10 @@ function clear(st: State, stage: LifeStage): void {
   const t = throwerOf(stage);
   for (const s of st.list) {
     for (const h of s.h) h.release();
-    if (s.person) {
+    if (s.person && s.sailor && s.person.mode !== 'gone' && deckOf(s.sailor)) {
+      // A sailor whose ship is still about: back on its deck.
+      giveBack(s, t);
+    } else if (s.person) {
       s.person.visible = true;
       t?.beamed.delete(s.person);
     }
@@ -811,7 +967,12 @@ export default defineSystem<State>({
       call(x, y, z, inView) {
         // Who it may take is settled now, from what the camera sees at the click.
         const crowd = crowdOf(ctx.stage);
-        const pool = (crowd?.people ?? []).filter((p) => takeable(p, []) && (!inView || inView(p.x, p.y + 0.2, p.z)));
+        const pool: Catch[] = (crowd?.people ?? []).filter((p) => takeable(p, []) && (!inView || inView(p.x, p.y + 0.2, p.z)));
+        // And the sailors standing on the decks of the ships about.
+        for (const ship of harbourOf(ctx.stage)?.ships ?? []) {
+          if (!ship.crew || ship.phase === 'sinking') continue;
+          for (const hand of ship.crew.deckHands()) if (!inView || inView(hand.x, hand.y + 0.2, hand.z)) pool.push({ hand, ship });
+        }
         st.calls.push({ x, y, z, pool });
         return true;
       },
