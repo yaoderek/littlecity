@@ -607,7 +607,7 @@ export function createInterface(host: InterfaceHost): Interface {
   // to the three of them. Undo and redo come when there is something to undo or redo (ui.css, .lc-phone).
   const skyButton = iconButton('time-run', t('Time, season and weather'), { class: 'lc-round lc-sky', attrs: { 'data-ui': 'sky', 'aria-expanded': 'false' } });
   const corner = el('div', { class: 'lc-card lc-corner lc-corner-right' }, [
-    ...(fly.button ? [fly.button] : []),
+    fly.button,
     timeButton,
     ...(host.seasons ? [seasonButton, weatherButton] : []),
     undoButton,
@@ -650,7 +650,7 @@ export function createInterface(host: InterfaceHost): Interface {
   const keyHint = (k: string, what: string): HTMLElement => el('span', { class: 'lc-key' }, [el('kbd', { text: k }), el('span', { text: what })]);
   root.append(
     el('div', { class: 'lc-keys', attrs: { 'data-ui': 'keys', 'aria-hidden': 'true' } }, [
-      ...(fly.available ? [keyHint('F', t('fly'))] : []),
+      keyHint('F', t('fly')),
       keyHint('Esc', t('whole island')),
       keyHint(mac ? '\u2318Z' : 'Ctrl Z', t('undo')),
     ]),
@@ -1281,8 +1281,8 @@ export function createInterface(host: InterfaceHost): Interface {
   const onKey = (e: KeyboardEvent): void => {
     if (typing(e) || fly.active) return;
     const key = e.key.toLowerCase();
-    // F takes off (desktop): what is open closes; a growing town goes on growing; not mid-drag.
-    if (key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && fly.available) {
+    // F takes off: what is open closes; a growing town goes on growing; not mid-drag.
+    if (key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat) {
       if (buttons !== 0) return;
       e.preventDefault();
       fly.enter();

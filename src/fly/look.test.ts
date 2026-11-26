@@ -2,7 +2,7 @@
 // once and by exactly that much (no easing: easing on the look reads as lag), glitches are dropped.
 
 import { describe, expect, test } from 'vitest';
-import { addLook, applyLook, LOOK_RATE, LOOK_SPIKE, newLook } from './look';
+import { addDrag, addLook, applyLook, DRAG_RATE, LOOK_RATE, LOOK_SPIKE, newLook } from './look';
 
 describe('the look', () => {
   test('many small, uneven movements in a frame add up, and turn the eye by their sum, at once', () => {
@@ -32,5 +32,15 @@ describe('the look', () => {
     addLook(sum, 0, -1000 + 700);
     applyLook(eye, sum);
     expect(eye.pitch).toBe(89);
+  });
+
+  test("a finger turns it farther than the mouse, the same way, and a long swipe in one slow frame counts", () => {
+    const sum = newLook();
+    addDrag(sum, 10, -4);
+    addDrag(sum, 240, 0);
+    const eye = { yaw: 0, pitch: 0 };
+    applyLook(eye, sum);
+    expect(eye.yaw).toBeCloseTo(-250 * DRAG_RATE * LOOK_RATE, 9);
+    expect(eye.pitch).toBeCloseTo(4 * DRAG_RATE * LOOK_RATE, 9);
   });
 });

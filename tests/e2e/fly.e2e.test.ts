@@ -3,14 +3,14 @@
 // a house stops the eye short of its wall; Escape and the cursor being let go
 // both glide back to exactly where the camera was; nothing can be built
 // while flying and the piece in hand is still in hand after. Escape with
-// nothing open glides to the whole-island view and keeps the piece. No wings
-// on a phone.
+// nothing open glides to the whole-island view and keeps the piece. On a
+// phone: the wings, a stick, a drag to look, and Land.
 //
 // Headless Chromium will not capture the cursor (pointer lock), so the tests
 // let it go through fly mode's test hook (testLoseLock) instead of the
 // browser; the keys are real key presses.
 
-import type { Page } from 'playwright';
+import type { CDPSession, Page } from 'playwright';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { startApp, type App } from '../helpers/browser';
 import { FULL } from '../helpers/tier';
@@ -239,16 +239,167 @@ describe('fly mode', () => {
     expect(await page.locator('[data-ui="length"]:visible').count()).toBe(1);
     expect(errors).toEqual([]);
   });
+});
 
-  test('on a phone there are no wings and F does nothing', async () => {
-    const { page, errors } = await app.open('/?seed=7&gen=1', { width: 390, height: 844, hasTouch: true, isMobile: true });
-    await page.waitForFunction('window.__lc !== undefined');
-    expect(await page.locator('[data-ui="fly"]').count()).toBe(0);
-    await page.keyboard.press('f');
+type Finger = { x: number; y: number; id: number };
+const touch = (cdp: CDPSession, type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', points: Finger[]): Promise<unknown> =>
+  cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+
+describe('fly mode by touch', () => {
+  const PHONE = { width: 390, height: 844, hasTouch: true, isMobile: true };
+  const takeOff = async (size = PHONE): Promise<{ page: Page; errors: string[]; cdp: CDPSession }> => {
+    const { page, errors } = await app.open('/?seed=7&gen=1', size);
+    await page.waitForFunction('window.__lc?.ui?.fly !== undefined');
+    const cdp = await page.context().newCDPSession(page);
+    return { page, errors, cdp };
+  };
+  const across = (d: Debug, w: number, h: number): number => (2 * Math.atan(Math.tan((d.fov * Math.PI) / 360) * (w / h)) * 180) / Math.PI;
+  const still = (page: Page): Promise<unknown> => page.waitForFunction('window.__lc.ui.fly.debug().speed < 1e-6');
+
+  test('the wings take off; one thumb flies while the other looks; nothing is built; Land gives back the camera', async () => {
+    const { page, errors, cdp } = await takeOff();
+    await page.tap('[data-item="house"]');
+    const from = await camera(page);
+    const count = await page.evaluate(blocks);
+    await page.tap('[data-ui="fly"]');
+    await waitPhase(page, 'flying');
+    for (const ui of ['fly-land', 'fly-stick', 'fly-look']) expect(await page.locator(`[data-ui="${ui}"]`).isVisible(), ui).toBe(true);
+    expect(await page.locator('[data-ui="fly-hint"]').count()).toBe(0);
+    expect(await page.locator('.lc-tray').isVisible()).toBe(false);
+    await page.waitForFunction('window.__lc.ui.fly.debug().fov > 89');
+    expect(across(await debug(page), 390, 844)).toBeCloseTo(50, 0);
+
+    // The stick comes to the thumb, which pushes it half way and then all the way: forward, and faster.
+    const left = { x: 100, y: 640, id: 1 };
+    await touch(cdp, 'touchStart', [left]);
+    const ring = (await page.locator('[data-ui="fly-stick"]').boundingBox())!;
+    expect(ring.x + ring.width / 2).toBeCloseTo(100, 0);
+    expect(ring.y + ring.height / 2).toBeCloseTo(640, 0);
+    const d0 = await debug(page);
+    await touch(cdp, 'touchMove', [{ ...left, y: 614 }]);
+    await page.waitForFunction('window.__lc.ui.fly.debug().speed > 2');
+    await page.waitForTimeout(700);
+    expect((await debug(page)).speed).toBeLessThan(3);
+    await touch(cdp, 'touchMove', [{ ...left, y: 560 }]);
+    await page.waitForFunction('window.__lc.ui.fly.debug().speed > 5');
+    const d1 = await debug(page);
+    const yaw = (d0.yaw * Math.PI) / 180, pitch = (d0.pitch * Math.PI) / 180;
+    const fwd = [-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+    expect([0, 1, 2].reduce((s, i) => s + (d1.eye![i]! - d0.eye![i]!) * fwd[i]!, 0)).toBeGreaterThan(0.5);
+
+    // The other thumb looks: 50 px right and 20 up, at 0.4 degrees a pixel. It goes on flying.
+    const right = { x: 300, y: 500, id: 2 };
+    const push = { ...left, y: 560 };
+    await touch(cdp, 'touchStart', [push, right]);
+    await touch(cdp, 'touchMove', [push, { ...right, x: 325, y: 490 }]);
+    await touch(cdp, 'touchMove', [push, { ...right, x: 350, y: 480 }]);
     await frames(page);
-    expect(await phase(page)).toBe('off');
+    const d2 = await debug(page);
+    expect((((d1.yaw - d2.yaw) % 360) + 360) % 360).toBeCloseTo(20, 4);
+    expect(d2.pitch - d1.pitch).toBeCloseTo(8, 4);
+    expect(await page.locator('[data-ui="fly-look"]').isVisible()).toBe(false);
+
+    // Let go: it comes to rest, the stick back in its corner.
+    await touch(cdp, 'touchEnd', []);
+    await still(page);
+    expect((await page.locator('[data-ui="fly-stick"]').boundingBox())!.y).toBeGreaterThan(680);
+    // Taps and a long press do nothing to the town.
+    await page.touchscreen.tap(195, 420);
+    await touch(cdp, 'touchStart', [{ x: 200, y: 300, id: 1 }]);
+    await page.waitForTimeout(600);
+    await touch(cdp, 'touchEnd', []);
+    expect(await page.evaluate(blocks)).toBe(count);
+
+    await page.tap('[data-ui="fly-land"]');
+    await waitPhase(page, 'off');
     expect(await page.evaluate('window.__lc.view.getEyeCamera()')).toBeNull();
+    expect(await camera(page)).toEqual(from);
+    expect(await page.locator('.lc-tray').isVisible()).toBe(true);
+    expect(await page.evaluate(pressed)).toEqual(['house']);
+    expect(await page.evaluate(blocks)).toBe(count);
     expect(errors).toEqual([]);
+  });
+
+  test('a cancelled touch, or the page losing the player, lets the stick go', async () => {
+    const { page, errors, cdp } = await takeOff();
+    await page.tap('[data-ui="fly"]');
+    await waitPhase(page, 'flying');
+    for (const lose of ['cancel', 'blur'] as const) {
+      await touch(cdp, 'touchStart', [{ x: 100, y: 640, id: 1 }]);
+      await touch(cdp, 'touchMove', [{ x: 100, y: 690, id: 1 }]);
+      await page.waitForFunction('window.__lc.ui.fly.debug().speed > 1');
+      if (lose === 'cancel') await touch(cdp, 'touchCancel', []);
+      else await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+      await still(page);
+      if (lose === 'blur') {
+        // The finger is still down, but holds nothing now.
+        await touch(cdp, 'touchMove', [{ x: 100, y: 740, id: 1 }]);
+        await frames(page);
+        expect((await debug(page)).speed).toBeLessThan(1e-6);
+        await touch(cdp, 'touchEnd', []);
+      }
+    }
+    // Landing with a thumb on the stick: the next flight does not start moving.
+    await touch(cdp, 'touchStart', [{ x: 100, y: 640, id: 1 }]);
+    await touch(cdp, 'touchMove', [{ x: 100, y: 690, id: 1 }]);
+    await page.evaluate('window.__lc.ui.fly.exit()');
+    await waitPhase(page, 'off');
+    await touch(cdp, 'touchEnd', []);
+    await page.tap('[data-ui="fly"]');
+    await waitPhase(page, 'flying');
+    await page.waitForTimeout(300);
+    expect((await debug(page)).speed).toBeLessThan(1e-6);
+    expect(errors).toEqual([]);
+  });
+
+  test('begun zoomed right in, the lens opens; turned over, it changes; Land is still exactly the camera', async () => {
+    const { page, errors } = await takeOff();
+    await page.evaluate(() => (window as unknown as { __lc: { view: { setCamera(p: unknown): void } } }).__lc.view.setCamera({ yaw: 30, pitch: 35, zoom: 6, target: [24, 1, 24] }));
+    await page.tap('[data-ui="fly"]');
+    await waitPhase(page, 'flying');
+    await page.waitForFunction('window.__lc.ui.fly.debug().fov > 89');
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForFunction('Math.abs(window.__lc.ui.fly.debug().fov - 62) < 0.5');
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForFunction('window.__lc.ui.fly.debug().fov > 89');
+    const from = (await page.evaluate('window.__lc.ui.fly.debug().from')) as unknown;
+    await page.tap('[data-ui="fly-land"]');
+    await waitPhase(page, 'off');
+    expect(await camera(page)).toEqual(from);
+    expect(errors).toEqual([]);
+  });
+
+  test.each([
+    { width: 390, height: 844 },
+    { width: 844, height: 390 },
+    { width: 320, height: 568 },
+    { width: 820, height: 1180 },
+  ])('$width x $height: the wings, Land, the stick and the hint are on the screen, none over another', async (size) => {
+    const { page, errors } = await takeOff({ ...PHONE, ...size });
+    await page.tap('[data-ui="fly"]');
+    await waitPhase(page, 'flying');
+    const boxes = await Promise.all(['fly-land', 'fly-stick', 'fly-look'].map(async (ui) => ({ ui, ...(await page.locator(`[data-ui="${ui}"]`).boundingBox())! })));
+    for (const a of boxes) {
+      expect(a.x >= 0 && a.y >= 0 && a.x + a.width <= size.width && a.y + a.height <= size.height, a.ui).toBe(true);
+      for (const b of boxes) if (a !== b) expect(a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height, `${a.ui} over ${b.ui}`).toBe(false);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test('nothing is made for flying until the first tap on the wings', async () => {
+    const { page } = await app.open('/?seed=7&gen=1', PHONE);
+    await page.waitForFunction('window.__lc?.ui?.fly !== undefined');
+    await page.evaluate(() => {
+      const w = window as unknown as { __prepared: number; __lc: { view: { prepareEye(): Promise<void> } } };
+      w.__prepared = 0;
+      const was = w.__lc.view.prepareEye.bind(w.__lc.view);
+      w.__lc.view.prepareEye = () => (w.__prepared++, was());
+    });
+    await page.waitForTimeout(4500);
+    expect(await page.evaluate('window.__prepared')).toBe(0);
+    await page.tap('[data-ui="fly"]');
+    expect(await page.evaluate('window.__prepared')).toBe(1);
+    await waitPhase(page, 'flying');
   });
 });
 
