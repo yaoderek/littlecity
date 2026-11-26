@@ -25,6 +25,7 @@ import { place } from '../motion/pose';
 import { harbourOf } from '../ships/visit';
 import { scenesOf } from '../town/scenes';
 import { Raid } from './raid';
+import { createSallies } from './sally';
 import { raidsOf, type Raids, type Summon } from './raids';
 import { planRaid, raidField } from './site';
 import { raiderScale } from './far';
@@ -50,6 +51,8 @@ interface State {
   hidden: Set<Raid>;
   /** Seconds of play with this town shown (for raids on their own). */
   played: number;
+  /** The castles' garrisons turning out against raids (sally.ts). */
+  sallies: ReturnType<typeof createSallies>;
   /** The next raid on its own may come at this many seconds of play. */
   nextAuto: number | null;
 }
@@ -99,13 +102,14 @@ export default defineSystem<State>({
     const own = ownStage(ctx.stage);
     const raids = raidsOf(ctx.stage);
     const d = mischiefOf(ctx.stage);
-    const st: State = { own, stage: ctx.stage, raids, d, off: () => {}, now: 0, pending: [], cries: new Map(), cryMeshes: [], flames: [], smokeAcc: 0, hidden: new Set(), played: 0, nextAuto: null };
+    const st: State = { own, stage: ctx.stage, raids, d, off: () => {}, now: 0, pending: [], cries: new Map(), cryMeshes: [], flames: [], smokeAcc: 0, hidden: new Set(), played: 0, nextAuto: null, sallies: createSallies(ctx.stage, own, raids, (e) => raids.emit(e.type === 'horn' ? { type: 'horn', x: e.x, z: e.z, long: e.long ?? false } : { type: e.type, x: e.x, z: e.z })) };
     raids.list = [];
     raids.start = (s: Summon) => start(st, s);
     raids.handles = () => own.live;
     const offD = d.on((e: MischiefEvent) => {
       if (e.type === 'reset') {
-        // Undo while they are on, a new town, growing one: every raid ends now, nothing left.
+        // Undo while they are on, a new town, growing one: every raid ends now, nothing left; the garrison back in its round.
+        st.sallies.reset();
         raids.end();
         clearDrawn(st);
         st.hidden.clear();
@@ -151,6 +155,8 @@ export default defineSystem<State>({
       st.pending.splice(i, 1);
       for (const raid of raids.list) raid.hit(p.x, p.z, BLAST.rubble * p.power * 0.9, BLAST.wreck * p.power, BLAST.shake * p.power);
     }
+    // The garrisons (before the raids are let go: a sally sees its raid end and marches home).
+    st.sallies.step(dt, signals.time.seconds);
     if (raids.list.length > 0) {
       const threats: { x: number; z: number }[] = [];
       for (const raid of [...raids.list]) {
@@ -189,6 +195,7 @@ export default defineSystem<State>({
     void ctx;
   },
   dispose(st) {
+    st.sallies.dispose();
     for (const raid of st.raids.list) raid.end(null);
     st.raids.list = [];
     st.raids.start = null;

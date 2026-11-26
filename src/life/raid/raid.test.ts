@@ -59,8 +59,15 @@ describe('the raid', () => {
   // A shorter stay ashore than a raid's own 95 s (the horn sooner): every beat is still gone through, in less
   // time (this file was over five minutes on its own).
   const ashore = RAID.ashore;
-  beforeAll(() => setStyle('raid', 'ashore', 50));
-  afterAll(() => setStyle('raid', 'ashore', ashore));
+  beforeAll(() => {
+    setStyle('raid', 'ashore', 50);
+    // The raid itself: the harbour town's castle garrison kept in (sally.test.ts has it turn out).
+    setStyle('raid', 'sally', 0);
+  });
+  afterAll(() => {
+    setStyle('raid', 'ashore', ashore);
+    setStyle('raid', 'sally', 1);
+  });
 
   test('a landing raid on the harbour town: sighted, ashore, fires and loot, away, everything put away; undo puts the town back', () => {
     const t = town('grown-harbour');
