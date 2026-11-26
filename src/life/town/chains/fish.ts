@@ -4,6 +4,7 @@
 // room, where fish are laid out on the counter; then goes back to fishing.
 // Residents come by for a fish and walk home with it dangling from a hand.
 
+import { PEOPLE } from '@/style/people';
 import { CHAINS } from '@/style/town-life';
 import type { Person } from '../../people/crowd';
 import type { Chain, Post } from '../board';
@@ -44,7 +45,7 @@ export function fishChain(): Chain {
           chain,
           at: 0,
           steps: [
-            board.stepAt(post.cell, { ...standAt(board, post, 0.3), pose: 'fish', linger: CHAINS.fishing, tag: 'fish:fishing', done: (q) => void (q.load = 'fish') }),
+            board.stepAt(post.cell, { ...standAt(board, post, PEOPLE.fishReach), pose: 'fish', linger: CHAINS.fishing, tag: 'fish:fishing', done: (q) => void (q.load = 'fish') }),
             deliverStep(board, to, 'fish', 'fishes', 3, 'fish:deliver'),
           ],
         };

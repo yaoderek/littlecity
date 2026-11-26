@@ -102,6 +102,11 @@ export const PEOPLE = defineStyle(
     kiteWind: 0.24,
     kiteOut: 0.95,
     kiteUp: 1.15,
+    /**
+     * How far out from the middle of a dock's cell somebody fishing stands: at the edge (a cell is 1 across), in
+     * front of a pier head's seat and bucket, so the rod's tip and its line are well out over the water.
+     */
+    fishReach: 0.42,
   },
   {
     cap: [0, 120, 1],

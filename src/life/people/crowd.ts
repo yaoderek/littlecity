@@ -522,7 +522,7 @@ export function createCrowd(opts: CrowdOptions = {}): Crowd {
         break;
       }
       case 'haunt-pier':
-        facing(0.3);
+        facing(PEOPLE.fishReach);
         g.pose = 'fish';
         g.linger *= 1.5;
         break;
@@ -536,7 +536,7 @@ export function createCrowd(opts: CrowdOptions = {}): Crowd {
         g.pose = 'look';
         break;
       case 'haunt-night':
-        facing(0.3);
+        facing(h.name === 'fisher' ? PEOPLE.fishReach : 0.3);
         g.pose = h.name === 'fisher' ? 'fish' : 'look';
         g.linger = 30 + r(p, 'linger') * 30;
         break;
@@ -577,7 +577,7 @@ export function createCrowd(opts: CrowdOptions = {}): Crowd {
             g.linger = 8;
             break;
           case 'fisher':
-            facing(0.3);
+            facing(PEOPLE.fishReach);
             g.pose = 'fish';
             g.linger = 30 + r(p, 'linger') * 30;
             break;

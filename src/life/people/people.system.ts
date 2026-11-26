@@ -10,11 +10,12 @@
 // its residents at their doors.
 
 import { shipInFor } from '../ships/news';
-import { DIR4, keyX, keyZ, SEA_Y } from '@/core/grid';
+import { CELL_H, columnIndex, DIR4, inColumnBounds, key, keyX, keyZ, SEA_Y, type CellKey } from '@/core/grid';
 import type { Mat4Like } from '@/core/mat4';
 import { defineSystem, type InstanceHandle, type LifeStage, type Signals, type SignalsDriver } from '@/life/api';
 import type { MeshData } from '@/gen/mesh';
-import { bubbleMesh, kiteMesh, lineMesh, TOOL_PIECE, toolMesh, UMBRELLAS, type Tool } from '@/parts/people/extras';
+import { bubbleMesh, castLine, castLineMesh, floatMesh, kiteMesh, lineMesh, TOOL_PIECE, toolMesh, UMBRELLAS, type Tool } from '@/parts/people/extras';
+import { wakeRing } from '../boats/afloat';
 import { buildPerson, DESIGN_HEIGHT, lookOf, PIECES, rigOf, type Look, type Rig } from '@/parts/people/person';
 import { poseOf, rigMatrices, sitDrop } from '@/parts/people/pose';
 import type { NavDoor } from '@/resolve/plan';
@@ -216,6 +217,10 @@ interface Drawn {
   hatless?: boolean;
   /** The broom's stroke last drawn (a puff of dust at each). */
   stroke: number;
+  /** Fishing: the line from the rod's tip to the float on the water, and whether a fish was tugging at the last drawing. */
+  cast?: { line: InstanceHandle; float: InstanceHandle; tugged: boolean; ring: number } | null;
+  /** The fishing pose's tug on the line is on (the float dips). */
+  tug?: boolean;
 }
 
 /**
@@ -308,6 +313,66 @@ interface State {
   unsubscribe: () => void;
   /** L50: the scuffle's drawings, while one is on. */
   art: ScuffleArt | null;
+  /** The ground under the town, for where a fishing line can reach the water. */
+  sea: Sea | null;
+}
+
+interface Sea {
+  height: Uint8Array;
+  kinds: ReadonlyMap<CellKey, unknown>;
+}
+
+/**
+ * Open sea straight under (x, z): no land within half a cell (the drawn shore spills a little sand over the water
+ * cells next to it), and nothing built in its column from the water up to `top` (a deck, a boat house).
+ */
+function openWater(sea: Sea | null, x: number, z: number, top: number): boolean {
+  if (!sea) return false;
+  for (const [dx, dz] of SHORE_SAMPLES) {
+    const cx = Math.floor(x + dx), cz = Math.floor(z + dz);
+    if (!inColumnBounds(cx, cz) || sea.height[columnIndex(cx, cz)] !== 0) return false;
+  }
+  const cx = Math.floor(x), cz = Math.floor(z);
+  for (let y = 0; y * CELL_H < top; y++) if (sea.kinds.has(key(cx, y, cz))) return false;
+  return true;
+}
+const SHORE_SAMPLES: readonly (readonly [number, number])[] = [[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5], [0.35, 0.35], [0.35, -0.35], [-0.35, 0.35], [-0.35, -0.35]];
+
+/** How far the float goes under while a fish tugs, and a ring on the water every this many seconds while it sits. */
+const FLOAT_DIP = 0.012;
+const FLOAT_RING = 4.5;
+const castM = { line: [] as number[], float: [] as number[] };
+let castMeshes: { line: MeshData; float: MeshData } | null = null;
+
+function releaseCast(d: Drawn): void {
+  d.cast?.line.release();
+  d.cast?.float.release();
+  d.cast = null;
+}
+
+/**
+ * Fishing: the line hangs from the rod's tip to a float on the sea, whatever the height of the deck (only where the
+ * tip is out over open water: a rod held over planks or land has no line). Placed from the rod as last drawn; the
+ * float dips and leaves a ring when a fish tugs, and a small ring now and then while it sits.
+ */
+function drawCast(p: Person, d: Drawn, stage: LifeStage, sea: Sea | null, seconds: number): void {
+  const rod = d.tool?.kind === 'rod' && d.shown;
+  const at = rod ? castLine(d.last.subarray(80, 96), SEA_Y, d.tug ? FLOAT_DIP : 0, castM.line, castM.float) : null;
+  if (!at || !openWater(sea, at.x, at.z, at.tipY)) {
+    if (d.cast) releaseCast(d);
+    return;
+  }
+  if (!d.cast) {
+    castMeshes ??= { line: castLineMesh(), float: floatMesh() };
+    d.cast = { line: stage.spawnMesh(castMeshes.line, castM.line), float: stage.spawnMesh(castMeshes.float, castM.float), tugged: false, ring: Math.floor(seconds / FLOAT_RING + p.rank) };
+  } else {
+    d.cast.line.setMatrix(castM.line);
+    d.cast.float.setMatrix(castM.float);
+  }
+  const ring = Math.floor(seconds / FLOAT_RING + p.rank);
+  if ((d.tug && !d.cast.tugged) || ring !== d.cast.ring) wakeRing(stage, at.x, at.z, d.tug ? 0.03 : 0.022, d.tug ? 3 : 2.4, d.tug ? 1.4 : 1.8);
+  d.cast.tugged = d.tug === true;
+  d.cast.ring = ring;
 }
 
 /** The five pieces' matrices, then (slot 5) a long tool's, in the figure's frame and in the world. */
@@ -393,6 +458,8 @@ function draw(p: Person, d: Drawn, stage: LifeStage, gust: boolean): void {
   const walking = !tumble?.pose && (name === 'walk' || name === 'run' || name === 'panic');
   const pose = tumble?.pose ? { ...tumble.pose } : poseOf(name, walking ? p.stride : p.poseTime, p.rank);
   // L26: a strong gust, and a hand goes to the hat.
+  // Fishing: the pose's tug on the line (it leans back), which dips the float (drawCast).
+  d.tug = name === 'fish' && pose.lean < 0;
   if (gust && d.look.hat !== 'none' && (walking || name === 'stand')) {
     pose.armR = 2.95;
     pose.outR = -0.2;
@@ -583,6 +650,7 @@ export default defineSystem<State>({
           d?.bubble?.release();
           d?.kite?.kite.release();
           d?.kite?.line.release();
+          if (d) releaseCast(d);
           d?.tool?.handle.release();
           d?.load?.handle.release();
           d?.askew?.release();
@@ -607,9 +675,10 @@ export default defineSystem<State>({
     // The debug handle for browser tests and for watching (like the app's window.__lc): the newest crowd.
     (globalThis as { __lcPeople?: Crowd }).__lcPeople = crowd;
     (globalThis as { __lcTown?: LivingTown }).__lcTown = town;
-    return { crowd, town, drawn, bubbleMesh: null, lineMesh: null, standIns: [], tick: -1, fresh: true, unsubscribe, art: null };
+    return { crowd, town, drawn, bubbleMesh: null, lineMesh: null, standIns: [], tick: -1, fresh: true, unsubscribe, art: null, sea: null };
   },
   sync(state, next, _prev, ctx) {
+    state.sea = { height: next.shape.facts.terrain.height, kinds: next.shape.facts.kinds };
     if (!next.dressing) {
       // Just after an edit: the town's chains take the new shape now (L54 reads what landed).
       state.town.sync(next.shape, null, ctx.signals.time);
@@ -671,6 +740,7 @@ export default defineSystem<State>({
       if (!d) continue;
       const gust = p.visible && d.look.hat !== 'none' && signals.wind(p.x, p.z).strength > PEOPLE.gust;
       draw(p, d, ctx.stage, gust);
+      drawCast(p, d, ctx.stage, state.sea, signals.time.seconds);
       // The chat bubble over whoever is talking (L26).
       const talking = p.bubble && p.visible;
       if (talking) {
@@ -725,6 +795,7 @@ export default defineSystem<State>({
       d.bubble?.release();
       d.kite?.kite.release();
       d.kite?.line.release();
+      releaseCast(d);
       d.tool?.handle.release();
       d.load?.handle.release();
       d.askew?.release();
