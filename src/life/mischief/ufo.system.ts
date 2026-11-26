@@ -38,7 +38,7 @@ import { harbourOf, type Ship } from '../ships/visit';
 import type { DeckHand } from '../ships/crew';
 import { rigOf } from '@/parts/actors/ships/rig';
 import { mapEdge } from '@/rules/life/ship-routes';
-import { alienMesh, coneMesh, domeMesh, helpMesh, lightsMesh, motesMesh, poolMesh, rimMesh, ringsMesh, SAUCER, saucerMesh, ufoShadowMesh } from './ufo-art';
+import { alienMesh, coneMesh, domeMesh, helpMesh, lightsMesh, poolMesh, SAUCER, saucerMesh, ufoShadowMesh } from './ufo-art';
 
 export const UFO = {
   /** How far apart (centre to centre) two saucers' hover points must be not to be stacked one over the other, and the step between them. */
@@ -90,6 +90,8 @@ export interface Saucer {
   to: { x: number; y: number; z: number };
   /** The ground under its hover point. */
   ground: number;
+  /** The ground under the beam's foot while it leans (searching). */
+  foot: number;
   /** Where it was called. */
   click: { x: number; z: number };
   /** Who it may take: the people out of doors, and sailors on deck, in the camera's view when it was called (all of them in tests, with no view). */
@@ -125,7 +127,7 @@ export interface Saucer {
   vz: number;
   ax: number;
   az: number;
-  /** Handles: hull, dome, pilot, lights (two halves), cone, rings, pool, rim, motes, shadow, balloon. */
+  /** Handles: hull, dome, pilot, lights (two halves), beam, pool, shadow, balloon. */
   h: InstanceHandle[];
 }
 
@@ -141,7 +143,7 @@ export interface Ufos {
 }
 
 /** What a saucer is drawn with, built ahead (one a frame, after the town is shown), so a click builds nothing. */
-const MESHES = [saucerMesh, domeMesh, alienMesh, () => lightsMesh(0), () => lightsMesh(1), coneMesh, ringsMesh, poolMesh, rimMesh, motesMesh, ufoShadowMesh, helpMesh];
+const MESHES = [saucerMesh, domeMesh, alienMesh, () => lightsMesh(0), () => lightsMesh(1), coneMesh, poolMesh, ufoShadowMesh, helpMesh];
 
 const registry = new WeakMap<LifeStage, Ufos>();
 export function ufosOf(stage: LifeStage): Ufos | null {
@@ -367,7 +369,7 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number, po
   const from = edgePoint(cruise, n, 'in');
   const own = st.own.stage;
   const s: Saucer = {
-    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, hy), z }, ground, click: { x, z }, pool, sailor: null, toShip: false, gx: x, gz: z,
+    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, hy), z }, ground, foot: ground, click: { x, z }, pool, sailor: null, toShip: false, gx: x, gz: z,
     person: null, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0, wait: 0, yielded: 0, lane, hover: { x: 0, y: 0, z: 0 },
     vx: 0, vz: 0, ax: 1, az: 0,
     h: MESHES.map((mesh) => {
@@ -518,6 +520,10 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.beam = Math.min(1, s.t / UFO.beamOn) * (s.t > UFO.seek - 0.4 ? Math.max(0, (UFO.seek - s.t) / 0.4) : 1);
       s.lean = 0.32 * Math.min(1, s.t / 0.8);
       s.leanYaw = s.t * 2.2;
+      {
+        const reach = Math.tan(s.lean) * Math.max(0.2, s.y - s.ground);
+        s.foot = skyTop(t, st.shape, s.x + Math.sin(s.leanYaw) * reach, s.z + Math.cos(s.leanYaw) * reach, 0).ground;
+      }
       if (s.t < UFO.seek) break;
       s.lean = 0;
       s.beam = 0;
@@ -788,7 +794,7 @@ function placeTilted(m: number[], x: number, y: number, z: number, ax: number, a
 
 /** Where things are drawn now. */
 function draw(st: State, s: Saucer): void {
-  const [hull, dome, alien, la, lb, cone, rings, pool, rim, motes, shadow, help] = s.h as [InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle];
+  const [hull, dome, alien, la, lb, cone, pool, shadow, help] = s.h as [InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle, InstanceHandle];
   const m = st.m;
   const shown = s.phase !== 'gone' && s.phase !== 'done';
   hull.setVisible(shown);
@@ -840,38 +846,28 @@ function draw(st: State, s: Saucer): void {
   la.setVisible(shown && half === 0);
   lb.setVisible(shown && half === 1);
   if (shown) (half === 0 ? la : lb).setMatrix(m);
-  // The beam: the cone, bands of light travelling along it, sparkles rising, the pool and its pulsing rim.
+  // The beam (bands travelling along it and sparkles rising in it are painted in it) and its pool of light.
   const on = shown && s.beam > 0.01;
-  // A weak device (the governor has given up the full ink): the beam's cone and pool only (no bands,
-  // sparkles or rim: fewer layers of light laid over the page).
-  const rich = on && !weakDevice();
   cone.setVisible(on);
-  rings.setVisible(rich);
   pool.setVisible(on);
-  rim.setVisible(rich);
-  motes.setVisible(rich);
   if (on) {
-    const len = Math.max(0.2, y - s.ground);
+    const floor = s.lean > 0.001 ? s.foot : s.ground;
+    const len = Math.max(0.2, y - floor);
     const lean = s.lean, ly = s.leanYaw;
     const ox = Math.sin(ly) * Math.tan(lean) * len, oz = Math.cos(ly) * Math.tan(lean) * len;
-    // The cone from the hatch to the ground (leaning while it searches): its −y axis runs to the foot.
-    cone.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x, y, s.z, 1]);
-    cone.setParams(1.15 * s.beam, 0, 0, -1);
-    // The bands: up the beam while it lifts somebody, down it while it sets them down (a quarter apart, wrapping).
+    // One flat shape from the hatch to the foot (leaning while it searches), turned square to the camera
+    // about its length, so it is the cone's outline seen from wherever you look.
+    const yaw = camera().yaw;
+    const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    cone.setMatrix([rx, 0, rz, 0, -ox, len, -oz, 0, -rz, 0, rx, 0, s.x, y, s.z, 1]);
+    // The bands: up the beam while it lifts somebody, down it while it sets them down.
     const dir = s.phase === 'drop' ? -1 : 1;
-    const shift = (((st.time * 0.5 * dir) % 0.25) + 0.25) % 0.25;
-    rings.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x + ox * shift, y + len * shift, s.z + oz * shift, 1]);
-    rings.setParams(1.5 * s.beam, 0, 0, -1);
-    // Sparkles rising up it, wrapping.
-    const rise = ((((st.time * 0.4 * dir) % 1) + 1) % 1) * 0.5;
-    motes.setMatrix([1, 0, 0, 0, -ox, len, -oz, 0, 0, 0, 1, 0, s.x + ox * rise, y + len * rise, s.z + oz * rise, 1]);
-    motes.setParams(1);
+    const phaseB = (((st.time * 2 * dir) % 1) + 1) % 1;
+    // A weak device (a phone, or the governor has given up the full ink): no sparkles.
+    cone.setParams(s.beam, phaseB, weakDevice() ? 0.25 : 0, -1);
     const r = BEAM_POOL;
-    pool.setMatrix([r, 0, 0, 0, 0, 1, 0, 0, 0, 0, r, 0, s.x + ox, s.ground + 0.02, s.z + oz, 1]);
-    pool.setParams(1.1 * s.beam, 0, 0, -1);
-    const pulse = r * (1 + 0.1 * Math.sin(st.time * 7));
-    rim.setMatrix([pulse, 0, 0, 0, 0, 1, 0, 0, 0, 0, pulse, 0, s.x + ox, s.ground + 0.025, s.z + oz, 1]);
-    rim.setParams(1.6 * s.beam, 0, 0, -1);
+    pool.setMatrix([r, 0, 0, 0, 0, 1, 0, 0, 0, 0, r, 0, s.x + ox, floor + 0.03, s.z + oz, 1]);
+    pool.setParams(s.beam, 0, 1, -1);
   }
   // A ring of shadow under it, growing as it comes down.
   // (Not while the beam is on: its pool of light is there.)
@@ -904,12 +900,17 @@ function weakDevice(): boolean {
   return typeof g.innerWidth === 'number' && typeof g.innerHeight === 'number' && Math.min(g.innerWidth, g.innerHeight) < 600;
 }
 
-const card = new Array<number>(16).fill(0);
-function facing(x: number, y: number, z: number, sc: number, jig: number): number[] {
+/** The app's camera, turned and tilted (radians); a default with no app (tests). */
+function camera(): { yaw: number; pitch: number } {
   const view = (globalThis as { __lc?: { view?: { getCamera?(): { yaw: number; pitch: number }; getEyeCamera?(): { yaw: number; pitch: number } | null } } }).__lc?.view;
   const deg = Math.PI / 180;
   const e = view?.getEyeCamera?.();
-  const cam = e ? { yaw: e.yaw * deg, pitch: -e.pitch * deg } : view?.getCamera ? { yaw: view.getCamera().yaw * deg, pitch: view.getCamera().pitch * deg } : { yaw: 45 * deg, pitch: 35 * deg };
+  return e ? { yaw: e.yaw * deg, pitch: -e.pitch * deg } : view?.getCamera ? { yaw: view.getCamera().yaw * deg, pitch: view.getCamera().pitch * deg } : { yaw: 45 * deg, pitch: 35 * deg };
+}
+
+const card = new Array<number>(16).fill(0);
+function facing(x: number, y: number, z: number, sc: number, jig: number): number[] {
+  const cam = camera();
   const c = Math.cos(cam.yaw), sn = Math.sin(cam.yaw), ct = Math.cos(cam.pitch), st = Math.sin(cam.pitch);
   const v = [c * sc, 0, -sn * sc, 0, -sn * st * sc, ct * sc, -c * st * sc, 0, sn * ct * sc, st * sc, c * ct * sc, 0, x, y + jig, z, 1] as const;
   for (let i = 0; i < 16; i++) card[i] = v[i]!;

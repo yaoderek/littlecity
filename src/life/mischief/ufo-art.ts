@@ -12,16 +12,15 @@
 //   lightsMesh   the ring of coloured lights round the rim and the antenna's
 //                tip, half of them in each of two copies (drawn in turn: they
 //                chase and the tip blinks); self-lit
-//   coneMesh     the tractor beam: a cone from the hatch (y 0) to the ground
-//                (y −1), translucent turquoise light, brightest at its edges, fading
-//                down its length (the renderer's tractor mode: PATTERN.beam
-//                with param d = −1, src/render/shaders/surface.ts)
-//   ringsMesh    four bands round the cone a quarter of its length apart,
-//                moved up it (lifting) or down it (setting down)
-//   poolMesh     the pool of light where the beam meets the ground, and the
-//                wider spill of it round about (lighting the street at night)
-//   rimMesh      the pool's bright pulsing rim
-//   motesMesh    sparkles rising in the beam
+//   coneMesh     the tractor beam: the cone's outline from the hatch (y 0) to the
+//                ground (y −1) as one flat shape, turned to face the camera, so it
+//                is one smooth wash from every side (no faces, no seams); painted
+//                by the renderer's tractor mode (PATTERN.beam with param d = −1,
+//                src/render/shaders/surface.ts): a pale turquoise wash with the
+//                paper through it, wavering hand-drawn edges, bands travelling
+//                along it and soft rising glints, all in the one shape, no ink
+//   poolMesh     the pool of light where the beam meets the ground: a soft glow
+//                with a pale pulsing rim, fading out (lighting the street at night)
 //   ufoShadowMesh  a ring of shadow under it (bigger as it comes down)
 //   helpMesh     the "HELP!" balloon over whoever is taken (the raiders' card)
 
@@ -117,89 +116,39 @@ export function lightsMesh(half: 0 | 1): MeshData {
   return m;
 }
 
-/** Quads round an upright band from (r0 at y0) to (r1 at y1), all tractor light, `edge` from e0 to e1. */
-function band(b: MeshBuilder, r0: number, y0: number, r1: number, y1: number, e0: number, e1: number, sides: number): void {
-  for (let i = 0; i < sides; i++) {
-    const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
-    b.quad([Math.cos(a) * r0, y0, Math.sin(a) * r0], [Math.cos(a) * r1, y1, Math.sin(a) * r1], [Math.cos(c) * r1, y1, Math.sin(c) * r1], [Math.cos(c) * r0, y0, Math.sin(c) * r0], { edge: [e0, e1, e1, e0] });
-  }
-}
-
 /** The beam's radius at the hatch and at the ground. */
 export const BEAM = { r0: SAUCER.r * 0.3, r1: SAUCER.r * 0.95 } as const;
 
 let cone: MeshData | null = null;
+/**
+ * The beam: a flat trapezoid in the x–y plane facing +z, as wide as the cone at the hatch (y 0) and at the
+ * ground (y −1), with room either side for its soft edge. Its vertex colours are where the shader is on it:
+ * red across (0 to 1), green down (0 to 1).
+ */
 export function coneMesh(): MeshData {
   if (cone) return cone;
   const b = new MeshBuilder({ ink: 'ufo-cone' });
-  b.setColor(SAUCER.beam).setPattern(PATTERN.beam).setInk('cone');
-  band(b, BEAM.r0, 0, BEAM.r1, -1, 0, 0.45, 16);
+  b.setPattern(PATTERN.beam).setInk('cone');
+  const w0 = BEAM.r0 * 1.16, w1 = BEAM.r1 * 1.16;
+  b.quad([-w0, 0, 0], [-w1, -1, 0], [w1, -1, 0], [w0, 0, 0], { colors: [[0, 0, 0], [0, 255, 0], [255, 255, 0], [255, 0, 0]] });
   cone = b.build();
   return cone;
 }
 
-let rings: MeshData | null = null;
-/** Four bright bands round the cone, a quarter of its length apart (the top one at −0.06). */
-export function ringsMesh(): MeshData {
-  if (rings) return rings;
-  const b = new MeshBuilder({ ink: 'ufo-rings' });
-  b.setColor('#a6fff4').setPattern(PATTERN.beam).setInk('rings');
-  for (let k = 0; k < 4; k++) {
-    const y = -0.06 - k * 0.25;
-    const r = BEAM.r0 + (BEAM.r1 - BEAM.r0) * -y;
-    band(b, r * 1.02, y + 0.03, r * 1.02, y - 0.03, 0, 0, 14);
-  }
-  rings = b.build();
-  return rings;
-}
-
 let pool: MeshData | null = null;
-/** The pool of light on the ground (radius 1, bright in the middle) and its spill round about (to radius 1.6, faint: kept small, it is light laid over the page at 3× on a phone). */
+/** The pool of light on the ground, out to radius 1.6 (the beam's foot at 1), flat; red is how far out. */
 export function poolMesh(): MeshData {
   if (pool) return pool;
   const b = new MeshBuilder({ ink: 'ufo-pool' });
-  b.setColor(SAUCER.beam).setPattern(PATTERN.beam).setInk('pool');
-  const sides = 18;
+  b.setPattern(PATTERN.beam).setInk('pool');
+  const sides = 24;
   for (let i = 0; i < sides; i++) {
     const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
     // Facing up (counter-clockwise seen from above).
-    b.tri([0, 0, 0], [Math.cos(c), 0, Math.sin(c)], [Math.cos(a), 0, Math.sin(a)], { edge: [0, 0.35, 0.35] });
-    b.quad([Math.cos(a), 0, Math.sin(a)], [Math.cos(c), 0, Math.sin(c)], [Math.cos(c) * 1.6, 0, Math.sin(c) * 1.6], [Math.cos(a) * 1.6, 0, Math.sin(a) * 1.6], { edge: [0.55, 0.55, 1, 1] });
+    b.tri([0, 0, 0], [Math.cos(c) * 1.6, 0, Math.sin(c) * 1.6], [Math.cos(a) * 1.6, 0, Math.sin(a) * 1.6], { colors: [[0, 0, 0], [255, 0, 0], [255, 0, 0]] });
   }
   pool = b.build();
   return pool;
-}
-
-let rim: MeshData | null = null;
-/** The pool's rim: a bright flat ring at radius 1 (scaled to pulse). */
-export function rimMesh(): MeshData {
-  if (rim) return rim;
-  const b = new MeshBuilder({ ink: 'ufo-rim' });
-  b.setColor('#a6fff4').setPattern(PATTERN.beam).setInk('rim');
-  const sides = 20;
-  for (let i = 0; i < sides; i++) {
-    const a = (i / sides) * Math.PI * 2, c = ((i + 1) / sides) * Math.PI * 2;
-    b.quad([Math.cos(a) * 0.9, 0.01, Math.sin(a) * 0.9], [Math.cos(c) * 0.9, 0.01, Math.sin(c) * 0.9], [Math.cos(c) * 1.05, 0.01, Math.sin(c) * 1.05], [Math.cos(a) * 1.05, 0.01, Math.sin(a) * 1.05], { edge: [0, 0, 0, 0] });
-  }
-  rim = b.build();
-  return rim;
-}
-
-let motes: MeshData | null = null;
-/** Sparkles in the beam: little four-pointed stars up a unit column inside the cone (moved up it, wrapping). */
-export function motesMesh(): MeshData {
-  if (motes) return motes;
-  const b = new MeshBuilder({ ink: 'ufo-motes' });
-  b.setColor('#e6fffb').setPattern(airborne(PATTERN.glow));
-  for (let i = 0; i < 9; i++) {
-    const y = -(i + 0.5) / 9;
-    const rr = (BEAM.r0 + (BEAM.r1 - BEAM.r0) * -y) * (0.25 + ((i * 37) % 10) / 16);
-    const a = i * 2.39;
-    b.setInk(`mote${i}`);
-    smoothBall(b, Math.cos(a) * rr, y, Math.sin(a) * rr, 0.022, 0.022, 0.022, 4, 2);
-  }
-  motes = b.build();
-  return motes;
 }
 
 let shadow: MeshData | null = null;
