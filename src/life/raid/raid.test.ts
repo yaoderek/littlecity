@@ -2,7 +2,7 @@
 // the sail to the last of it, with the app's own wiring and no renderer
 // (tests/helpers/turmoil.ts). Waits on the raid's state, never on the clock.
 
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { encodeTown } from '@/world/save';
 import { setStyle } from '@/core/style';
 import { buildScenario } from '@/scenario';
@@ -56,6 +56,12 @@ function onGraph(t: Turmoil, raid: Raid): string[] {
 }
 
 describe('the raid', () => {
+  // A shorter stay ashore than a raid's own 95 s (the horn sooner): every beat is still gone through, in less
+  // time (this file was over five minutes on its own).
+  const ashore = RAID.ashore;
+  beforeAll(() => setStyle('raid', 'ashore', 50));
+  afterAll(() => setStyle('raid', 'ashore', ashore));
+
   test('a landing raid on the harbour town: sighted, ashore, fires and loot, away, everything put away; undo puts the town back', () => {
     const t = town('grown-harbour');
     const before = encodeTown(t.game.world);

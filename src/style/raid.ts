@@ -37,6 +37,13 @@ export const RAID = defineStyle(
     everySpread: 480,
     /** A town must have at least this many buildings to be worth raiding on its own. */
     worth: 14,
+    /**
+     * Raiders alive at once, all parties together (every click brings another): past this a new party is a
+     * token crew (tokenCrew). Less on a phone-sized screen.
+     */
+    ceiling: 40,
+    ceilingPhone: 24,
+    tokenCrew: 3,
   },
   {
     sail: [0.5, 4, 0.1],
@@ -47,5 +54,8 @@ export const RAID = defineStyle(
     ashore: [10, 300, 5],
     first: [0, 3600, 30],
     every: [30, 3600, 30],
+    ceiling: [4, 200, 1],
+    ceilingPhone: [4, 200, 1],
+    tokenCrew: [1, 8, 1],
   },
 );

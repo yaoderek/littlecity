@@ -39,7 +39,6 @@
 // town opened, or growing one ends it with nothing left drawn or pending.
 // Nothing of it is saved: its fires are ordinary saved damage that mends.
 
-import { phrase } from '@/core/phrase';
 import { DIR4, key, keyX, keyY, keyZ, SEA_Y, type CellKey } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { Barbarian } from '@/parts/people/barbarian';
@@ -53,7 +52,6 @@ import type { Person } from '../people/crowd';
 import type { Board, Chain, Plan, PlanStep, Spot } from '../town/board';
 import { DIR_HEADING } from '../town/board';
 import { reaches } from '../town/hands';
-import { scenesOf, type Scene } from '../town/scenes';
 import { critterPose, crittersOf } from '../mischief/critters';
 import { fxOf } from '../fx/fx';
 import type { Director } from '../mischief/director';
@@ -164,6 +162,15 @@ export interface RaidHost {
   stage: LifeStage;
   director: Director;
   sound(s: RaidSound): void;
+  /**
+   * The other raids going on (each its own party): their vessels, to keep clear of at sea (the older raid has
+   * the way), and the buildings claimed and looted by any party (shared, so none goes for another's).
+   */
+  others?: () => { n: number; v: Vessel }[];
+  claimed?: Map<StructureId, number>;
+  looted?: Set<StructureId>;
+  /** The most raiders this party may bring (a ceiling on raiders alive at once); at least a token crew. */
+  most?: number;
 }
 
 let raidCount = 0;
@@ -205,8 +212,6 @@ export class Raid {
   private fleeLook = 0;
   /** People we took off the crowd ourselves (boarding): not "lost". */
   private boarded = new WeakSet<Person>();
-  /** The note and the register. */
-  scene: Scene | null = null;
   /** Something the system draws over a raider: a war cry. */
   ended = false;
   private exitAt = 0;
@@ -249,7 +254,7 @@ export class Raid {
     // The band, scaled to the town.
     const want = Math.round(Math.max(RAID.bandMin, Math.min(RAID.bandMax, RAID.bandMin + buildings / RAID.perBuildings)));
     const seats = this.kind === 'boats' ? this.boats[0]!.seats.length * this.boats.length : this.ship!.seats.length;
-    const band = Math.min(want, seats);
+    const band = Math.max(1, Math.min(want, seats, host.most ?? Infinity));
     for (let i = 0; i < band; i++) {
       const chief = i === 0;
       const v = chief ? 'chief' : (`raider-${(i - 1 + (seed % 8)) % 8}` as Barbarian);
@@ -357,8 +362,34 @@ export class Raid {
 
   private boatStroke = 0;
 
-  private moveShip(dt: number): void {
+  /**
+   * Keeping clear of another raid's vessels at sea: an older raid has the way; this one lies on its oars while
+   * one of theirs is close ahead of it (never for long: after 12 s it goes on regardless). The speed to go at, 0–1.
+   */
+  private giveWay(v: Vessel, dt: number): number {
+    const others = this.host.others?.() ?? [];
+    const sx = Math.sin(v.yaw), cz = Math.cos(v.yaw);
+    let k = 1;
+    for (const o of others) {
+      if (o.n > this.n || o.v.sink > 0.3 || o.v.aground || o.v.held) continue;
+      const dx = o.v.x - v.x, dz = o.v.z - v.z;
+      const d = Math.hypot(dx, dz);
+      const room = (v.length + o.v.length) * 0.5 + 0.9;
+      if (d > room + 1.5 || (dx * sx + dz * cz) < d * 0.3) continue;
+      k = Math.min(k, clamp01((d - room) / 1.5));
+    }
+    const w = this.waited.get(v) ?? 0;
+    if (k < 0.2) this.waited.set(v, w + dt);
+    else if (w > 0) this.waited.set(v, Math.max(0, w - dt));
+    return w > 12 ? 1 : k;
+  }
+  private waited = new Map<Vessel, number>();
+
+  private moveShip(dtIn: number): void {
     const v = this.ship!, site = this.site;
+    const way = this.shipState === 'beached' ? 1 : this.giveWay(v, dtIn);
+    const dt = dtIn * way;
+    if (way < 0.2) v.rowing = Math.min(v.rowing, 0.15);
     const turn = site.voyage.turn;
     switch (this.shipState) {
       case 'arrive': {
@@ -530,11 +561,12 @@ export class Raid {
       if (this.handled(b, i + 1)) return;
       const st = this.boatState[i];
       const ways = this.site.boatWays[i]!;
+      const way = st === 'row-in' || st === 'row-out' ? this.giveWay(b, dt) : 1;
       if (st === 'row-in') {
         const path = ways.arrive;
         const left = path.length - this.boatS[i]!;
         // Pulling hard over the open water, easing in over the last few cells.
-        this.boatS[i] = Math.min(path.length, this.boatS[i]! + RAID.boatRow * (0.4 + 0.95 * clamp01(left / 6)) * dt);
+        this.boatS[i] = Math.min(path.length, this.boatS[i]! + RAID.boatRow * (0.4 + 0.95 * clamp01(left / 6)) * dt * way);
         const q = pathAt(path, Math.max(0, this.boatS[i]!));
         b.x = q.x;
         b.z = q.z;
@@ -554,7 +586,7 @@ export class Raid {
       } else if (st === 'row-out') {
         const path = ways.leave;
         // Backed off the sand, brought round, then away: slow at first, laden.
-        this.boatS[i] = Math.min(path.length, this.boatS[i]! + RAID.boatRow * (0.35 + 0.75 * clamp01(this.boatS[i]! / 2)) * dt);
+        this.boatS[i] = Math.min(path.length, this.boatS[i]! + RAID.boatRow * (0.35 + 0.75 * clamp01(this.boatS[i]! / 2)) * dt * way);
         const q = pathAt(path, this.boatS[i]!);
         b.x = q.x;
         b.z = q.z;
@@ -1008,18 +1040,6 @@ export class Raid {
   stepLand(dt: number, board: Board, time: TimeSignal, chainId: string, chain: Chain): void {
     if (this.ended) return;
     const crowd = board.crowd;
-    // The register and its note.
-    if (!this.scene) {
-      this.scene = scenesOf(board).begin({
-        kind: 'raid',
-        title: this.kind === 'boats' ? phrase('Raiders off the coast! Boats are coming in.') : phrase('Raiders off the coast!'),
-        big: true,
-        focus: () => this.focus(),
-        noteworthy: () => true,
-        gathering: () => this.beat !== 'done',
-        urgent: true,
-      });
-    }
     // Sighted: the townspeople nearest the shore stop and point out to sea (one waving the alarm).
     if (this.beat === 'sighted' && !this.pointed && this.age > 4 && !this.lead.edgeCut) {
       this.pointed = true;
@@ -1281,6 +1301,8 @@ export class Raid {
     for (const [sid, st] of shape.structures) {
       const kind = st.kind;
       if (kind !== 'house' && kind !== 'stall' && kind !== 'windmill') continue;
+      // Been through already by another party: nothing left in it.
+      if (this.host.looted?.has(sid) && this.host.claimed?.get(sid) !== this.n) continue;
       const low = st.cells.reduce((a, b) => (keyY(b) < keyY(a) ? b : a));
       const dd = dist(low);
       if (dd > 26) continue;
@@ -1569,6 +1591,7 @@ export class Raid {
         }
         const loot = this.lootFor(t, r);
         const door = (nav.doorsOf.get(t.structure) ?? []).map((i) => nav.doors[i]!).find((dr) => dr.node >= 0 && !dr.hatch && reaches(board, p, nav.nodes[dr.node]!.cell));
+        this.host.looted?.add(t.structure);
         const toPile = this.pileStep(board, r, loot, () => {
           t.done = true;
           t.by = null;
@@ -1616,6 +1639,8 @@ export class Raid {
     return plan(steps);
   }
 
+  /** The buildings this party went for (no other party goes for them while raids are on). */
+  readonly took = new Set<StructureId>();
   /** Stalls their goods were taken from, and the market's baskets taken off their counters (put back at the end). */
   readonly emptied = new Set<StructureId>();
   /** The town offered nothing at all to burn or take: the horn goes early. */
@@ -1699,8 +1724,12 @@ export class Raid {
     if (!more()) return null;
     const p = r.person!;
     let best: Target | null = null, bestD = Infinity;
+    const claimed = this.host.claimed;
     for (const t of list) {
       if (t.done || (t.by && t.by !== r)) continue;
+      // Another party is at it (or has been): theirs.
+      const owner = claimed?.get(t.structure);
+      if (owner !== undefined && owner !== this.n) continue;
       // Their own quarter first; another's only when theirs is done.
       const d = board.dist(t.cell, p.cell) + (t.by === r ? -100 : 0) + (mine(t) ? 0 : 40);
       if (d < bestD) {
@@ -1711,6 +1740,8 @@ export class Raid {
     if (best) {
       best.by = r;
       r.target = best.structure;
+      claimed?.set(best.structure, this.n);
+      this.took.add(best.structure);
     }
     return best;
   }
@@ -1789,10 +1820,8 @@ export class Raid {
         const plan = board.plans.get(p);
         if (plan && plan.chain.id === 'raid') board.drop(p);
       }
-      if (this.scene) scenesOf(board).end(this.scene);
     }
     this.fled.clear();
-    this.scene = null;
   }
 }
 
