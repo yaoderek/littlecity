@@ -2027,3 +2027,16 @@ and http://192.168.68.60:5180/.
   beam 0.000). Not verified by anyone: a sailor taken from a ship under
   way; the "ship gone, set down ashore" path; the sailor wears town
   clothes while off the ship.
+
+**Derek on UFO round 4 (preview, 2026-11-25 evening):** "better but the
+beam effect still doesn't look very good. The black lines especially
+look very off. It doesn't have the same shader look." Orchestrator's
+close screenshots of the preview build: the sparkles are diamonds with
+black ink outlines (opaque pass, an ink id each); the beam is a flat
+slab of pure cyan with hard polygon edges, no paper grain, a notched
+silhouette with pale shards; the town's ink lines show through it
+nearly black. → the UFO's agent, round 5: a soft turquoise wash with a
+gradient and feathered edges, a clean cone, no black ink in the effect,
+the scene's lines lifted under the light, the phone's cheap form to
+look good too; cost unchanged. From here on no attribution lines in
+commit messages. Still on a local preview; nothing live.
