@@ -2063,3 +2063,15 @@ the machine at a load of 35 (other sessions' test runs), all in
 it is slow even alone and worth looking at). Known weak: the pool is a
 flat disc (hidden under raised edges on steps); the beam is gentle by
 day.
+
+**Derek, 2026-11-25 late.** On the UFO preview: "make the beam
+slightly more opaque, it's a bit thin": done by the orchestrator on
+`preview/ufo-fixes` (`45f3e75`: about a third more opacity, thinning
+less toward the ground); only typecheck run on that commit; preview
+served at :5180 by `.context/lc-ufo-preview.mjs`; still not signed off,
+nothing live. Raids: the boat should land on the coast nearest the
+click, not come from a random direction, and clicking again should
+bring more raiders (no one-at-a-time limit) → raid agent
+(`af67b2b62016bdcfb`, `swarm/barbarians`), resumed, with the new house
+rules (no deploy, no attribution, translations in the same change,
+other chats in the harbour code).
