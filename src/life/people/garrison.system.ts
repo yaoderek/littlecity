@@ -64,6 +64,8 @@ export interface GarrisonView {
   readonly castle: Castle;
   readonly troop: Troop | null;
   readonly ride: Ride | null;
+  /** The castle's colour (tabards, the banner). */
+  readonly colour: string;
   out: { soldiers: OutFigure[]; rider: OutFigure | null } | null;
 }
 

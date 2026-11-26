@@ -21,7 +21,8 @@
 
 import { rand } from '@/core/rand';
 import type { Mat4Like } from '@/core/mat4';
-import type { MeshData } from '@/gen/mesh';
+import { MeshBuilder, PATTERN, type MeshData } from '@/gen/mesh';
+import { phrase } from '@/core/phrase';
 import { cloudMesh, dazeStarMesh, popMesh, POPS } from '@/parts/people/scuffle-art';
 import { RAID } from '@/style/raid';
 import { GARRISON, PERSON } from '@/style/people';
@@ -31,8 +32,10 @@ import { crittersOf } from '../mischief/critters';
 import type { Owned } from '../mischief/owned';
 import { garrisonsOf, type GarrisonView, type OutFigure } from '../people/garrison.system';
 import { createRouter, type Router } from '../people/route';
-import { outdoorRoute, trackAt, trackOf, type Track, type TrackPoint } from '../people/track';
+import { nearestOnTrack, outdoorRoute, trackAt, trackOf, type Track, type TrackPoint } from '../people/track';
+import { CELL_H, key } from '@/core/grid';
 import type { Board } from '../town/board';
+import { scenesOf, type Scene } from '../town/scenes';
 import type { Raid, Raider } from './raid';
 import type { Raids } from './raids';
 
@@ -43,6 +46,8 @@ type ManState = 'go' | 'ready' | 'engage' | 'brawl' | 'dazed' | 'back' | 'stand'
 
 /** Where somebody is going: along a route, then straight to the spot. */
 interface Leg {
+  /** First straight onto the route where it passes nearest (never a jump onto it). */
+  lead: { x: number; y: number; z: number } | null;
   track: Track | null;
   s: number;
   end: { x: number; y: number; z: number };
@@ -89,6 +94,44 @@ export interface Sally {
   /** Brawls the soldiers won and lost (for watching and tests). */
   won: number;
   lost: number;
+  /** The castle's banner, carried at the head of the column (seen from across the town). */
+  banner: InstanceHandle | null;
+  /** Its note ("The castle's garrison marches out!"). */
+  scene: Scene | null;
+}
+
+const banners = new Map<string, MeshData>();
+/** A tall standard in the castle's colour: a pole a person and a half high, a swallow-tailed flag at its top. */
+function bannerMesh(colour: string): MeshData {
+  let m = banners.get(colour);
+  if (m) return m;
+  const b = new MeshBuilder({ ink: 'sally-banner' });
+  b.setInk('pole').setColor('#6b4a2b').setPattern(PATTERN.planks);
+  b.box([-0.012, 0, -0.012], [0.012, 1.05, 0.012]);
+  b.setInk('finial').setColor('#e0a92e').setPattern(PATTERN.metal);
+  b.box([-0.025, 1.05, -0.025], [0.025, 1.1, 0.025]);
+  b.setInk('flag').setColor(colour).setPattern(PATTERN.cloth);
+  // Two-sided, a little apart: a flag off the pole, its tail cut in two.
+  // Each face both ways round (a side for each way it is seen from), a hair apart.
+  const quad = (z: number, p: [number, number][]): void => {
+    const v = p.map(([x, y]) => [x, y, z] as [number, number, number]);
+    if (z > 0) b.quad(v[0]!, v[1]!, v[2]!, v[3]!);
+    else b.quad(v[3]!, v[2]!, v[1]!, v[0]!);
+  };
+  const tri = (z: number, p: [number, number][]): void => {
+    const v = p.map(([x, y]) => [x, y, z] as [number, number, number]);
+    if (z > 0) b.tri(v[0]!, v[1]!, v[2]!);
+    else b.tri(v[2]!, v[1]!, v[0]!);
+  };
+  for (const z of [-0.004, 0.004]) {
+    quad(z, [[0.012, 1.02], [0.012, 0.72], [0.32, 0.74], [0.32, 1.0]]);
+    tri(z, [[0.32, 1.0], [0.32, 0.88], [0.42, 0.98]]);
+    tri(z, [[0.32, 0.86], [0.32, 0.74], [0.42, 0.74]]);
+  }
+  b.setInk('flag-band').setColor('#f2ead8').setPattern(PATTERN.cloth);
+  for (const z of [-0.007, 0.007]) quad(z, [[0.1, 0.94], [0.1, 0.8], [0.16, 0.8], [0.16, 0.94]]);
+  banners.set(colour, (m = b.build()));
+  return m;
 }
 
 export interface Sallies {
@@ -146,11 +189,19 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
   };
 
   /** A leg from a node to a spot: by the streets (out of doors if it can), then straight in. */
-  const legTo = (board: Board, from: number, to: number, end: { x: number; y: number; z: number }): Leg => {
+  const legTo = (board: Board, m: Man, to: number, end: { x: number; y: number; z: number }): Leg => {
     const r = routerFor(board);
     const nav = board.nav!;
+    const f = m.fig;
+    // From the cell he stands in now (not where his last route left off).
+    const from = nav.nodeAt.get(key(Math.floor(f.x), Math.max(0, Math.round(f.y / CELL_H)), Math.floor(f.z))) ?? m.node;
+    m.node = from;
     const route = r && from >= 0 && to >= 0 ? (outdoorRoute(nav, r, from, to) ?? r.find(from, to)) : null;
-    return { track: route && route.nodes.length > 1 ? trackOf(nav, [route], false) : null, s: 0, end };
+    const track = route && route.nodes.length > 1 ? trackOf(nav, [route], false) : null;
+    if (!track) return { lead: null, track: null, s: 0, end };
+    const at = nearestOnTrack(track, f.x, f.z);
+    trackAt(track, at, pt);
+    return { lead: { x: pt.x, y: pt.y, z: pt.z }, track, s: at, end };
   };
 
   /** Along the leg at `speed`; true once there. */
@@ -159,6 +210,20 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
     if (!leg) return true;
     let go = speed * dt;
     const f = m.fig;
+    if (leg.lead) {
+      const dx = leg.lead.x - f.x, dz = leg.lead.z - f.z, d = Math.hypot(dx, dz);
+      const step = Math.min(go, d);
+      if (d > 1e-4) {
+        f.x += (dx / d) * step;
+        f.z += (dz / d) * step;
+        f.y += (leg.lead.y - f.y) * Math.min(1, step / d);
+        f.heading = Math.atan2(dx, dz);
+      }
+      m.walked += step;
+      go -= step;
+      if (step >= d) leg.lead = null;
+      if (go <= 0) return false;
+    }
     if (leg.track && leg.s < leg.track.length) {
       const step = Math.min(go, leg.track.length - leg.s);
       leg.s += step;
@@ -221,7 +286,7 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
       const to = slot(path, head, i);
       const fig: OutFigure = { x: sd.x, y: sd.y, z: sd.z, heading: sd.heading, pose: 'run', stride: 0, hidden: false };
       const m: Man = { i, fig, node: sd.node, leg: null, state: 'go', foe: null, t: 0, look: 0, walked: 0 };
-      m.leg = legTo(board, sd.node, to.node, to);
+      m.leg = legTo(board, m, to.node, to);
       return m;
     });
     let rider: Man | null = null;
@@ -229,11 +294,27 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
       const rd = g.ride;
       trackAt(path, Math.min(path.length, head + 1.1), pt);
       const fig: OutFigure = { x: rd.x, y: rd.y, z: rd.z, heading: rd.heading, pose: 'run', stride: 0, hidden: false };
-      rider = { i: -1, fig, node: rd.node, leg: legTo(board, rd.node, pt.node, { x: pt.x, y: pt.y, z: pt.z }), state: 'go', foe: null, t: 0, look: 0, walked: 0 };
+      const to = { x: pt.x, y: pt.y, z: pt.z }, toNode = pt.node;
+      rider = { i: -1, fig, node: rd.node, leg: null, state: 'go', foe: null, t: 0, look: 0, walked: 0 };
+      rider.leg = legTo(board, rider, toNode, to);
     }
     g.out = { soldiers: men.map((m) => m.fig), rider: rider?.fig ?? null };
-    list.push({ g, raid, phase: 'form', t: 0, path, head, men, rider, brawls: [], won: 0, lost: 0 });
+    const sally: Sally = { g, raid, phase: 'form', t: 0, path, head, men, rider, brawls: [], won: 0, lost: 0, banner: own.stage.spawnMesh(bannerMesh(g.colour), HIDDEN), scene: null };
+    list.push(sally);
     count++;
+    // The note (it takes the place of the raid's while they march out; Watch follows the column).
+    sally.scene = scenesOf(board).begin({
+      kind: 'raid',
+      title: phrase("The castle's garrison marches out to meet the raiders!"),
+      big: true,
+      focus: () => {
+        const f = (sally.men.find((m) => !m.fig.hidden) ?? sally.men[0]!).fig;
+        return { x: f.x, y: f.y, z: f.z };
+      },
+      noteworthy: () => true,
+      gathering: () => list.includes(sally),
+      urgent: true,
+    });
     // The alarm from the castle.
     const gc = board.centre(nav.nodes[gate.node]!.cell);
     sound({ type: 'bell', x: gc.x, z: gc.z });
@@ -252,12 +333,12 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
       const sd = troop.soldiers[m.i]!;
       m.state = 'go';
       m.fig.hidden = false;
-      m.leg = legTo(board, m.node, sd.node, { x: sd.x, y: sd.y, z: sd.z });
+      m.leg = legTo(board, m, sd.node, { x: sd.x, y: sd.y, z: sd.z });
     }
     if (s.rider && s.g.ride) {
       const rd = s.g.ride;
       s.rider.state = 'go';
-      s.rider.leg = legTo(board, s.rider.node, rd.node, { x: rd.x, y: rd.y, z: rd.z });
+      s.rider.leg = legTo(board, s.rider, rd.node, { x: rd.x, y: rd.y, z: rd.z });
     }
   };
 
@@ -265,6 +346,10 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
   const finish = (s: Sally, rest: boolean): void => {
     for (const b of s.brawls) if (b.r.person) b.r.person.inCloud = false;
     s.brawls.length = 0;
+    s.banner?.release();
+    s.banner = null;
+    if (s.scene && raids.board) scenesOf(raids.board).end(s.scene);
+    s.scene = null;
     s.g.out = null;
     list.splice(list.indexOf(s), 1);
     if (rest) resting.set(s.g.key, now + RAID.garrisonRest);
@@ -313,7 +398,7 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
         m.t = 0;
         const gate = s.g.castle.gate!;
         const gc = board.centre(board.nav!.nodes[gate.node]!.cell);
-        m.leg = legTo(board, m.node, gate.node, { x: gc.x + gate.dx * 0.4, y: f.y, z: gc.z + gate.dz * 0.4 });
+        m.leg = legTo(board, m, gate.node, { x: gc.x + gate.dx * 0.4, y: f.y, z: gc.z + gate.dz * 0.4 });
       }
       return;
     }
@@ -346,12 +431,12 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
         }
       }
       m.foe = best;
-      if (best) m.leg = legTo(board, m.node, best.person!.node, { x: best.person!.x, y: best.person!.y, z: best.person!.z });
+      if (best) m.leg = legTo(board, m, best.person!.node, { x: best.person!.x, y: best.person!.y, z: best.person!.z });
     } else if (m.foe && m.look <= 0) {
       // He moved: after him again.
       m.look = 1;
       const p = m.foe.person!;
-      m.leg = legTo(board, m.node, p.node, { x: p.x, y: p.y, z: p.z });
+      m.leg = legTo(board, m, p.node, { x: p.x, y: p.y, z: p.z });
     }
     if (!m.foe) {
       // Nobody to go for: stand with the others, pike up.
@@ -572,7 +657,7 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
       const c = board.centre(at.cell);
       const side = ((k >> 1) - 1) * 0.25;
       m.state = 'go';
-      m.leg = legTo(board, m.node, at.node, { x: c.x - at.ox * 0.3 - at.oz * side, y: at.y, z: c.z - at.oz * 0.3 + at.ox * side });
+      m.leg = legTo(board, m, at.node, { x: c.x - at.ox * 0.3 - at.oz * side, y: at.y, z: c.z - at.oz * 0.3 + at.ox * side });
     });
   };
 
@@ -599,6 +684,18 @@ export function createSallies(stage: LifeStage, own: Owned, raids: Raids, sound:
       }
     };
     for (const s of list) {
+      // The banner with the first soldier on his feet (the standard-bearer), held up beside him.
+      const bearer = s.men.find((m) => !m.fig.hidden && m.state !== 'dazed' && !missing(s, m));
+      if (s.banner) {
+        s.banner.setVisible(!!bearer);
+        if (bearer) {
+          const f = bearer.fig;
+          const side = 0.13, c = Math.cos(f.heading), sn = Math.sin(f.heading);
+          const lift = f.pose === 'cheer' ? 0.12 + (tick % 2) * 0.04 : 0;
+          // Big enough to pick out from across the town (a standard, not a hand flag).
+          s.banner.setMatrix(m4(f.x - c * side, f.y + 0.05 + lift, f.z + sn * side, f.heading + Math.PI / 2, 1.5));
+        }
+      }
       for (const b of s.brawls) {
         const h = take(clouds, nc, (k) => meshes!.clouds[k % 3]!);
         nc++;
