@@ -1293,6 +1293,30 @@ back.
   at most four raid sounds at once and one horn at a time; at most six war
   cry balloons. All the parties share one open act: one undo puts the town
   back as it was before the first of them and ends them all.
+- **L74 · 2 · The garrison turns out** (`sally.ts`; Derek, 2026-11-25:
+  "i want the castle guards to fight the raiders if there is a castle guard
+  of people. they can repel one viking raid successfully") — a raid sighted
+  (2 s in) in a town with a castle garrison (L36) that can reach its landing
+  on foot → the alarm bell, the note "The castle's garrison marches out to
+  meet the raiders!", the troop leaves its round and forms up at the gate
+  (marching off once half are formed; the rest fall in at a run), and marches
+  out at the double (1.05 cells/s) along the streets to the landing, a tall
+  banner in the castle's colour at its head, the rider (L37) a horse's length
+  ahead. Within 4 cells of the band (or at the landing) each soldier runs at
+  the nearest raider nobody else has (two on one at most) and the pair vanish
+  into a dust cloud (several at once, drawn by the raid; 2.2–3.6 s). The
+  soldier wins 80 % alone, nearly always two on one; the loser sits dizzy with
+  stars (2.6 s), then runs: a raider for his ship, a soldier back to the gate.
+  When 40 % of the band (3 at least) is beaten it breaks: the horn early, back
+  to the ship, nothing more set alight, everything taken left behind (the pile
+  cleared, nothing aboard). The soldiers stand on the shore facing the sea,
+  cheering, until the ship is away, then walk back to their places in the
+  round, which carries on from there; the garrison rests 120 s before it will
+  turn out again. One party at a time: others raid as usual; it goes for the
+  first sighted it can reach. Undo puts the soldiers straight back; a raid
+  that ends otherwise (its ship sunk) sends them home. A soldier in the air
+  (blast, Hand) is missing from it until he is down. No castle, nothing
+  changes. Raids on their own are met the same way.
 
 - **LM03 · 2 · The UFO** (the Mischief drawer; run time, `src/life/mischief/ufo.system.ts`)
   — a click → a saucer from beyond the edge at a cruising height above the
