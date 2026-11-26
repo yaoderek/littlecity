@@ -1271,6 +1271,28 @@ back.
   day, never at a wedding, on top of two other big scenes, or while other
   mischief is going on. Time held at noon does not stop them; held at night
   they wait. Each holds the act open: one undo puts it all back.
+- **L73 · 2 · The Raid tool: where you click, as many as you like**
+  (`site.ts` `planAt`, `raids.ts`; Derek, 2026-11-25: "the boat goes to the
+  nearest coast on where you clicked … you can just spam them"). A click
+  (on the sea, the land or the town) → a party lands on the stretch of shore
+  nearest it that a vessel can reach (the very nearest if it can; else the
+  next nearest; refused only if the island has no reachable shore): a
+  longship where there is a beach to run up there, two or three rowing
+  boats to landings beside each other where there is not. It comes in by the
+  shortest clear way from the edge of the map, so it appears on the side
+  clicked. Raids on their own still choose their own site (L69, L70). Every
+  click brings another party, whatever is going on: each its own ship,
+  landing, band, loot pile and horn. A new party never lands within 2.6
+  cells of another's landing (a second click on one spot lands beside the
+  first) and plans its way clear of the others' ships and beached hulls; at
+  sea a newer party lies on its oars while an older one's vessel is close
+  ahead (12 s at most). No building is gone for by two parties, and nothing
+  is looted twice while raids are on. Raiders alive at once, all parties
+  together: at most 40 (24 on a phone-sized screen); past that a party is a
+  token crew of 3. One note ("Raiders off the coast!") while any raid is on;
+  at most four raid sounds at once and one horn at a time; at most six war
+  cry balloons. All the parties share one open act: one undo puts the town
+  back as it was before the first of them and ends them all.
 
 - **LM03 · 2 · The UFO** (the Mischief drawer; run time, `src/life/mischief/ufo.system.ts`)
   — a click → a saucer from beyond the edge (in 2.4 s), over the person out of
