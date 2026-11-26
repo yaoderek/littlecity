@@ -1,0 +1,21 @@
+# Throwaway: the unit tests on a quiet machine, for the code on GitHub and for the Windows change. Reads only.
+name: unit
+on:
+  push:
+    branches: [test/windows-wait]
+    paths: ['.github/workflows/unit.yml']
+permissions:
+  contents: read
+jobs:
+  unit:
+    strategy: { fail-fast: false, matrix: { ref: [16a21858edec6a64a1a1a7888a45248a7f4d5dbf] } }
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ matrix.ref }}', persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci --no-audit --no-fund
+      - run: npx tsc --noEmit && npx eslint . --max-warnings 0
+      - run: npx vitest run --project unit 2>&1 | tail -60

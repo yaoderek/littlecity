@@ -1,0 +1,47 @@
+# Throwaway: times the game's start on Windows and compares its picture. This branch only, reads only, publishes nothing.
+name: windows-wait
+on:
+  push:
+    branches: [test/windows-wait]
+    paths: ['src/**', 'tools/wintest/run.mjs', 'tools/wintest/diff.mjs', 'tools/shot/**', '.github/workflows/windows-wait.yml']
+permissions:
+  contents: read
+concurrency: { group: windows-wait, cancel-in-progress: true }
+jobs:
+  time:
+    strategy: { fail-fast: false, matrix: { browser: [chrome-d3d11, firefox] } }
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env: { VITE_POSTHOG_KEY: '', MSYS_NO_PATHCONV: '1', MSYS2_ARG_CONV_EXCL: '*' }
+    defaults: { run: { shell: bash } }
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install firefox
+      - run: npx vite build --base=/ --outDir "$RUNNER_TEMP/build" --emptyOutDir > /dev/null
+      - name: No analytics key in the build, and it points at the site root
+        run: '! grep -rl "phc_" "$RUNNER_TEMP/build/assets" && grep -q "src=\"/assets/" "$RUNNER_TEMP/build/index.html"'
+      - run: mkdir -p out && node tools/wintest/run.mjs --build="$RUNNER_TEMP/build" --out=out --runs=2 --shots=1 --only=${{ matrix.browser }} 2>&1 | tee out/log.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'time-${{ matrix.browser }}', path: out, retention-days: 5 }
+  picture:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env: { VITE_POSTHOG_KEY: '', MSYS_NO_PATHCONV: '1', MSYS2_ARG_CONV_EXCL: '*' }
+    defaults: { run: { shell: bash } }
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci --no-audit --no-fund
+      - run: mkdir -p out && node tools/wintest/diff.mjs --out out 2>&1 | tee out/log.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: picture, path: out, retention-days: 5 }
