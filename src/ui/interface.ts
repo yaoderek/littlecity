@@ -25,6 +25,7 @@ import { builtByHand, refused, tally, track, watchGrowth } from '@/app/analytics
 import type { Game } from '@/app/game';
 import { brushAt, copyLook, landColumn, levelSteps, lineCells, planErase, planUse, type ActionContext, type Plan, type ToolState } from './actions';
 import { el, iconButton, installTheme, isCoarsePointer, isPhone, PHONE_QUERY, setIcon } from './dom';
+import { icon } from './icons';
 import { createFeedback, wiggle, type Feedback } from './feedback';
 import { createFly, type FlyMode, type FlyPhase } from './fly';
 import { createGrowth, onlyStartingTrees, type Growth } from './growth';
@@ -39,7 +40,7 @@ import { createGhostPace, ghostFor, ghostForLand, ghostForRun } from './ghost';
 import { createGuide, type Guide } from './guide';
 import { clampLength, createScrollSteps, growthOf, maxLengthOf, planRun, type Run } from './length';
 import { createMarkers } from './markers';
-import { createMenu } from './menu';
+import { COFFEE_URL, createMenu } from './menu';
 import { createTownsSheet, type TownsHost } from './towns';
 import { faceZone, pickCell, type Pick } from './pick';
 import { DRAWER_IDS, drawerItems, isLandTool, isMischiefTool, isToolId, paintsRuns, type DrawerId, type ItemId } from './pieces';
@@ -618,6 +619,18 @@ export function createInterface(host: InterfaceHost): Interface {
       keyHint(mac ? '\u2318Z' : 'Ctrl Z', 'undo'),
     ]),
   );
+  // The tip jar (Derek, 2026-11-25: the menu is too hidden; "a small icon in the corner or just link txt
+  // that says buy me a coffee"). Small and quiet, never in the way: bottom right on a wide screen, under
+  // the left buttons where the tray takes the bottom (ui.css); on a phone it is the menu's last row instead
+  // (menu.ts). Gone while flying, like everything else.
+  const coffee = el('a', {
+    class: 'lc-coffee',
+    html: icon('coffee'),
+    attrs: { href: COFFEE_URL, target: '_blank', rel: 'noopener', 'data-ui': 'coffee' },
+    on: { click: () => track('coffee_clicked', { from: 'corner' }) },
+  });
+  coffee.append(el('span', { text: 'Buy me a coffee' }));
+  root.append(coffee);
   const slots = Math.max(...DRAWER_IDS.map((d) => drawerItems(d).length));
   tray.el.style.setProperty('--lc-slots', String(slots));
   (host.parent ?? document.body).append(root);

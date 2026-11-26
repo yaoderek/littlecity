@@ -1190,6 +1190,51 @@
   .lc-keys { display: none; }
 }
 
+/* ── the tip jar: a small cup and "Buy me a coffee" (src/ui/interface.ts) ── */
+
+.lc-coffee {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(9px + env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lc-ink);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+.lc-coffee .lc-icon {
+  width: 20px;
+  height: 20px;
+}
+.lc-coffee:hover,
+.lc-coffee:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+}
+.lc-coffee:active {
+  transform: translateY(1px);
+}
+/* Where the tray reaches the corners: under the left buttons instead (the menu, then the guide). */
+@media (max-width: 940px) {
+  .lc-coffee {
+    right: auto;
+    bottom: auto;
+    left: calc(10px + env(safe-area-inset-left));
+    top: calc(118px + env(safe-area-inset-top));
+  }
+  /* The first-visit note sits beside the buttons there: the cup waits until it is closed. */
+  .lc-ui:has(.lc-welcome:not(.lc-welcome-mini)) .lc-coffee { display: none; }
+}
+/* A phone: in the menu instead (its last row, menu.ts). */
+.lc-phone .lc-coffee { display: none; }
+
 /* ── first-visit welcome note: a closable card beside the menu button ──── */
 
 .lc-welcome {
