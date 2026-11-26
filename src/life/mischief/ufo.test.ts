@@ -282,8 +282,8 @@ describe('the UFO', () => {
     const problems: string[] = [];
     for (let i = 0; i < 4000 && ufos.saucers.length > 0; i++) {
       t.run(0.1);
-      // Never more handles out than the saucers about (twelve each), and nobody in two beams.
-      expect(ufos.live).toBe(ufos.saucers.length * 12);
+      // Never more handles out than the saucers about (nine each), and nobody in two beams.
+      expect(ufos.live).toBe(ufos.saucers.length * 9);
       const held = ufos.saucers.map((s) => s.person).filter((p) => p);
       expect(new Set(held).size).toBe(held.length);
       // No two discs overlapping (centres closer than a diameter across and nearer than a hull's height up and down).
