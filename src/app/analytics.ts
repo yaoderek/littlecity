@@ -20,12 +20,13 @@
 //   town_shared       {via: link | link_box | file}
 //   postcard_saved, town_downloaded, town_file_opened, shared_town_kept, shared_town_left,
 //   town_grown {new_island}, new_island, guide_opened, fly_started
-// Every event carries build, touch, and (for telling slow devices apart) gpu, cores and memory.
+// Every event carries build, lang (the language the game is shown in, src/i18n), touch, and (for telling slow devices apart) gpu, cores and memory.
 // PostHog adds its own: $pageview, $pageleave, $web_vitals, clicks on the interface (autocapture), and session
 // replays (desktops only, and not slow ones, with the town in them).
 //
 // A share link carries the whole town in the URL fragment (#t=...): it is cut from every URL sent.
 
+import { currentLang } from '@/i18n';
 import type { CaptureResult, PostHog } from 'posthog-js';
 import type { ShapePlan } from '@/resolve/plan';
 
@@ -178,7 +179,7 @@ export function startAnalytics(opts: { scenario: boolean; gpu?: string }): void 
           },
         });
         const nav = navigator as { hardwareConcurrency?: number; deviceMemory?: number };
-        posthog.register({ build: BUILD, touch: !desktop, gpu: chip(opts.gpu ?? ''), cores: nav.hardwareConcurrency ?? 0, memory: nav.deviceMemory ?? 0 });
+        posthog.register({ build: BUILD, lang: currentLang(), touch: !desktop, gpu: chip(opts.gpu ?? ''), cores: nav.hardwareConcurrency ?? 0, memory: nav.deviceMemory ?? 0 });
         ph = posthog;
         for (const [event, props] of queue.splice(0)) posthog.capture(event, props);
       })

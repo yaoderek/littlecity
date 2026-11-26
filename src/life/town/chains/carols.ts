@@ -12,6 +12,7 @@
 // Cost per step: a few comparisons per singer; a handful of notes in the air
 // (pooled drawings, never re-meshed).
 
+import { phrase } from '@/core/phrase';
 import { DIR4 } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { InstanceHandle } from '@/life/api';
@@ -123,7 +124,7 @@ export function carolChain(): CarolChain {
     rounds++;
     scene = scenesOf(board).begin({
       kind: 'carols',
-      title: 'Carol singers going door to door',
+      title: phrase('Carol singers going door to door'),
       big: true,
       focus: () => {
         const s = singers.find((x) => !x.lost && x.p.visible);

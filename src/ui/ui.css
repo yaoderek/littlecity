@@ -14,6 +14,11 @@
   --lc-font: ui-rounded, 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', 'Nunito', 'Varela Round', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --lc-item: 54px;
 }
+/* Chinese: the rounded Japanese face lacks many simplified characters, and a line that mixes two faces looks
+   broken; a Chinese face first (src/i18n sets <html lang>). */
+:root:lang(zh) {
+  --lc-font: ui-rounded, 'SF Pro Rounded', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', system-ui, sans-serif;
+}
 
 .lc-ui {
   position: fixed;
@@ -187,7 +192,8 @@
   box-sizing: border-box;
   margin: 0;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--lc-tab-font, 12px);
+  white-space: nowrap;
   color: var(--lc-ink);
   background: color-mix(in srgb, var(--lc-paper) 93%, var(--lc-ink));
   border: 1.6px solid var(--lc-ink);
@@ -997,10 +1003,12 @@
     gap: 4px;
   }
   .lc-tab {
-    flex: 1;
+    /* Shares the row by the length of each name (languages differ), and tray.ts shrinks them all when they do not fit. */
+    flex: 1 1 auto;
+    min-width: 0;
     min-height: 44px;
     padding: 0 6px;
-    font-size: 13.5px;
+    font-size: var(--lc-tab-font, 13.5px);
   }
   .lc-tab[aria-selected='true'] {
     min-height: 47px;
@@ -1189,6 +1197,51 @@
 @media (pointer: coarse), (max-width: 980px) {
   .lc-keys { display: none; }
 }
+
+/* ── the tip jar: a small cup and "Buy me a coffee" (src/ui/interface.ts) ── */
+
+.lc-coffee {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(9px + env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lc-ink);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+.lc-coffee .lc-icon {
+  width: 20px;
+  height: 20px;
+}
+.lc-coffee:hover,
+.lc-coffee:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+}
+.lc-coffee:active {
+  transform: translateY(1px);
+}
+/* Where the tray reaches the corners: under the left buttons instead (the menu, then the guide). */
+@media (max-width: 940px) {
+  .lc-coffee {
+    right: auto;
+    bottom: auto;
+    left: calc(10px + env(safe-area-inset-left));
+    top: calc(118px + env(safe-area-inset-top));
+  }
+  /* The first-visit note sits beside the buttons there: the cup waits until it is closed. */
+  .lc-ui:has(.lc-welcome:not(.lc-welcome-mini)) .lc-coffee { display: none; }
+}
+/* A phone: in the menu instead (its last row, menu.ts). */
+.lc-phone .lc-coffee { display: none; }
 
 /* ── first-visit welcome note: a closable card beside the menu button ──── */
 

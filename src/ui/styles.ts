@@ -7,6 +7,7 @@
 // so does leaving it. It never covers the held-length stepper: if it would,
 // it rises above it.
 
+import { t } from '@/i18n';
 import { HOUSE_STYLES, RANDOM_STYLE } from '@/style/houses';
 import { el } from './dom';
 import { styleIcon } from './icons';
@@ -41,13 +42,14 @@ export interface StyleFlyoutHost {
 }
 
 export function styleName(style: number): string {
-  return style === RANDOM_STYLE ? 'Random' : (HOUSE_STYLES[style - 1]?.name ?? 'Random');
+  const name = style === RANDOM_STYLE ? undefined : HOUSE_STYLES[style - 1]?.name;
+  return name ? t(name) : t('Random');
 }
 
 export function createStyleFlyout(host: StyleFlyoutHost): StyleFlyout {
   const root = el('div', {
     class: 'lc-pop lc-styles',
-    attrs: { role: 'menu', 'aria-label': 'House style', 'data-ui': 'styles', hidden: '' },
+    attrs: { role: 'menu', 'aria-label': t('House style'), 'data-ui': 'styles', hidden: '' },
   });
   let button: HTMLElement | null = null;
   let current = RANDOM_STYLE;
@@ -154,12 +156,12 @@ export function createStyleFlyout(host: StyleFlyoutHost): StyleFlyout {
             'button',
             {
               class: 'lc-btn lc-style',
-              title: n === RANDOM_STYLE ? 'Random: every house different' : `${HOUSE_STYLES[n - 1]!.name}: ${HOUSE_STYLES[n - 1]!.hint}`,
+              title: n === RANDOM_STYLE ? t('Random: every house different') : t('{style}: {hint}', { style: styleName(n), hint: t(HOUSE_STYLES[n - 1]!.hint) }),
               attrs: {
                 type: 'button',
                 role: 'menuitemradio',
                 'aria-checked': String(n === style),
-                'aria-label': `House style: ${styleName(n)}`,
+                'aria-label': t('House style: {style}', { style: styleName(n) }),
                 'data-style': String(n),
               },
               on: { click: () => host.choose(n) },

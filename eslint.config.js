@@ -4,7 +4,7 @@
 //     under src/core, src/terrain, src/resolve, src/rules, src/gen, src/parts
 //     and src/scenario there is no Math.random, no clock, no DOM. Chance
 //     comes from rand(seed, ...) in src/core/rand.ts.
-//  2. THE LAYERS. core, vocab ← style ← world, terrain ← resolve, rules, townmaker ←
+//  2. THE LAYERS. core, vocab, i18n ← style ← world, terrain ← resolve, rules, townmaker ←
 //     scenario, guide ← gen, parts ← life, render ← ui, app. A module may import
 //     from its own layer and the ones before it, never from a later one.
 //     (Checked on '@/...' imports: use the alias to import across modules.)
@@ -13,7 +13,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 const LAYERS = [
-  ['core', 'vocab'],
+  ['core', 'vocab', 'i18n'],
   ['style'],
   ['world', 'terrain'],
   ['resolve', 'rules', 'townmaker'],

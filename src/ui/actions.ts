@@ -10,6 +10,7 @@
 import { columnIndex, DIR4, edgeOf, inBounds, inColumnBounds, key, keyX, keyY, keyZ, NO_CELL, SIZE_Y, type CellKey, type Dir4 } from '@/core/grid';
 import { AUTO_KINDS, KINDS, PALETTE_SIZE, placedInfo, type Kind, type PlacedKind } from '@/core/kinds';
 import type { Vec3 } from '@/core/mat4';
+import { phrase } from '@/core/phrase';
 import type { Edit, Rot, Terrain, World } from '@/core/world';
 import { houseStyle } from '@/style/houses';
 import { islandOf, LAND_MAX } from '@/terrain/land';
@@ -153,18 +154,18 @@ export function planUse(tool: ToolState, pick: Pick, ctx: ActionContext): Plan {
 
   if (isFloorPiece(item)) {
     const cell = floorCell(pick, ctx);
-    if (cell === NO_CELL) return { tries: [], at: NO_CELL, refusal: 'outside the map' };
+    if (cell === NO_CELL) return { tries: [], at: NO_CELL, refusal: phrase('outside the map', {}) };
     return { tries: [{ type: 'placeFloor', cell, floor: item }], at: cell };
   }
 
   const target = pick.target;
-  if (target === NO_CELL) return { tries: [], at: NO_CELL, refusal: 'outside the map' };
+  if (target === NO_CELL) return { tries: [], at: NO_CELL, refusal: phrase('outside the map', {}) };
 
   if (isEdgePiece(item)) {
     const side = faceZone(pick);
     if (side !== null) {
       const edge = edgeOf(target, side);
-      if (edge === NO_CELL) return { tries: [], at: target, refusal: 'outside the map' };
+      if (edge === NO_CELL) return { tries: [], at: target, refusal: phrase('outside the map', {}) };
       return { tries: [{ type: 'placeEdge', edge, kind: item }], at: target };
     }
   }
@@ -228,7 +229,7 @@ function planLand(item: LandId, tool: ToolState, pick: Pick, ctx: ActionContext)
   const level = levelSteps(ctx.world, ctx.terrain, cols, to);
   if (level.edits.length === 0) {
     const flat = cols.every((c) => ctx.terrain.height[c] === to);
-    return { tries: [], at, refusal: flat ? 'Level brings the ground to the height where you press: drag from there across the ground' : level.reason };
+    return { tries: [], at, refusal: flat ? phrase('Level brings the ground to the height where you press: drag from there across the ground', {}) : level.reason };
   }
   return { tries: [level.edits[0]!], at, steps: level.edits };
 }
@@ -272,11 +273,11 @@ export function levelSteps(world: World, terrain: Terrain, cols: readonly number
     const next = applyEdit(w, terrain, e);
     // Columns that were refused this time will be refused again: note why, and go on with the rest.
     const moved = islandOf(next, terrain);
-    if (!reason && [...up, ...down].some((c) => moved.height[c] === t.height[c])) reason = 'some of the ground cannot move: something on it would be in the way';
+    if (!reason && [...up, ...down].some((c) => moved.height[c] === t.height[c])) reason = phrase('some of the ground cannot move: something on it would be in the way', {});
     edits.push(e);
     w = next;
   }
-  return { edits, world: w, reason: reason || 'the ground cannot move here' };
+  return { edits, world: w, reason: reason || phrase('the ground cannot move here', {}) };
 }
 
 /**

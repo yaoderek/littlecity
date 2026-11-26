@@ -7,7 +7,8 @@ import { RAMPS } from '@/style/palette';
 import { houseStyle, RANDOM_STYLE } from '@/style/houses';
 import { el, iconButton, setIcon } from './dom';
 import { icon, styleIcon } from './icons';
-import { DRAWER_IDS, DRAWER_LABELS, drawerItems, drawerOf, isFloorPiece, isLandTool, isToolId, type DrawerId, type ItemId } from './pieces';
+import { t } from '@/i18n';
+import { DRAWER_IDS, drawerItems, drawerLabels, drawerOf, isFloorPiece, isLandTool, isToolId, type DrawerId, type ItemId } from './pieces';
 import { createStyleFlyout, styleName, type StyleFlyout } from './styles';
 
 export interface TrayState {
@@ -57,20 +58,23 @@ export function swatchColors(item: ItemId): readonly string[] {
   return RAMPS[ramp === 'none' ? 'wall' : ramp];
 }
 
+/** A button's tooltip with its key: "House (2)". */
+const keyTip = (hint: string, key: string): string => (key ? t('{hint} ({key})', { hint, key }) : hint);
+
 export function createTray(start: Partial<TrayState> = {}): Tray {
   const state: TrayState = { drawer: 'build', item: 'auto', swatch: 'auto', style: RANDOM_STYLE, idle: false, ...start };
   const listeners: ((s: Readonly<TrayState>) => void)[] = [];
   const emit = (): void => listeners.forEach((fn) => fn(state));
 
-  const tabs = el('div', { class: 'lc-tabs', attrs: { role: 'tablist', 'aria-label': 'Drawers' } });
+  const tabs = el('div', { class: 'lc-tabs', attrs: { role: 'tablist', 'aria-label': t('Drawers') } });
   const row = el('div', { class: 'lc-row', attrs: { role: 'group' } });
   const swatchButton = el('button', {
     class: 'lc-btn lc-swatch-btn',
     attrs: { type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false', 'data-ui': 'swatch' },
   });
-  const swatches = el('div', { class: 'lc-pop lc-swatches', attrs: { role: 'group', 'aria-label': 'Colour', hidden: '' } });
+  const swatches = el('div', { class: 'lc-pop lc-swatches', attrs: { role: 'group', 'aria-label': t('Colour'), hidden: '' } });
   const card = el('div', { class: 'lc-card lc-tray-card' }, [row, el('div', { class: 'lc-tray-side' }, [swatchButton])]);
-  const root = el('div', { class: 'lc-tray', attrs: { role: 'toolbar', 'aria-label': 'Pieces and tools' } }, [tabs, card, swatches]);
+  const root = el('div', { class: 'lc-tray', attrs: { role: 'toolbar', 'aria-label': t('Pieces and tools') } }, [tabs, card, swatches]);
 
   const avoid: HTMLElement[] = [];
   const styles = createStyleFlyout({
@@ -97,25 +101,44 @@ export function createTray(start: Partial<TrayState> = {}): Tray {
       if (state.style === RANDOM_STYLE) setIcon(house, 'house');
       else if (holder) holder.innerHTML = styleIcon(state.style, wallIndex(state.style));
       house.dataset.houseStyle = String(state.style);
-      const label = state.style === RANDOM_STYLE ? 'House' : `House: ${styleName(state.style)}`;
+      const label = state.style === RANDOM_STYLE ? t('House') : t('House: {style}', { style: styleName(state.style) });
       house.setAttribute('aria-label', label);
-      const base = (house.dataset.title ??= house.title);
-      house.title = `${base.replace(/^House/, label)}. Hover for styles`;
+      house.title = t('{what}. Hover for styles', { what: keyTip(label, house.dataset.key ?? '') });
     }
     styles.render(state.style, wallIndex);
   };
 
   const tabButtons = new Map<DrawerId, HTMLButtonElement>();
+  const labels = drawerLabels();
   for (const id of DRAWER_IDS) {
     const tab = el('button', {
       class: 'lc-tab',
-      text: DRAWER_LABELS[id],
+      text: labels[id],
       attrs: { type: 'button', role: 'tab', 'data-drawer': id },
       on: { click: () => api.openDrawer(id) },
     });
     tabButtons.set(id, tab);
     tabs.append(tab);
   }
+
+  // Drawer names are longer in some languages (Spanish "Herramientas"): where the row of tabs does not fit
+  // (a phone), the names get smaller, never cut or pushed off the edge. Again whenever the width changes.
+  let fittedWidth = -1;
+  const fitTabs = (): void => {
+    const width = tabs.clientWidth;
+    if (width === fittedWidth || width === 0) return;
+    fittedWidth = width;
+    tabs.style.removeProperty('--lc-tab-font');
+    const first = tabButtons.values().next().value;
+    if (!first) return;
+    let size = parseFloat(getComputedStyle(first).fontSize);
+    const over = (): boolean => tabs.scrollWidth > tabs.clientWidth + 1 || [...tabButtons.values()].some((b) => b.scrollWidth > b.clientWidth + 1);
+    while (over() && size > 9) {
+      size -= 0.5;
+      tabs.style.setProperty('--lc-tab-font', `${size}px`);
+    }
+  };
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => fitTabs()).observe(tabs);
 
   const renderRow = (): void => {
     row.replaceChildren();
@@ -124,8 +147,8 @@ export function createTray(start: Partial<TrayState> = {}): Tray {
       const button = iconButton(item.id, item.label, {
         class: 'lc-item',
         showLabel: true,
-        title: key ? `${item.hint} (${key})` : item.hint,
-        attrs: { 'data-item': item.id, 'aria-pressed': String(item.id === state.item && !state.idle) },
+        title: keyTip(item.hint, key),
+        attrs: { 'data-item': item.id, 'data-key': key, 'aria-pressed': String(item.id === state.item && !state.idle) },
         // Clicking the piece already in hand puts it down: nothing selected, just looking.
         on: { click: () => (item.id === state.item && !state.idle ? api.setIdle(true) : api.select(item.id)) },
       });
@@ -142,21 +165,21 @@ export function createTray(start: Partial<TrayState> = {}): Tray {
   const renderSwatch = (): void => {
     const colors = swatchColors(state.item);
     const auto = state.swatch === 'auto';
-    swatchButton.title = auto ? 'Colour: auto (matches what you build on)' : 'Colour';
-    swatchButton.setAttribute('aria-label', auto ? 'Colour: auto' : `Colour ${Number(state.swatch) + 1}`);
+    swatchButton.title = auto ? t('Colour: auto (matches what you build on)') : t('Colour');
+    swatchButton.setAttribute('aria-label', auto ? t('Colour: auto') : t('Colour {n}', { n: Number(state.swatch) + 1 }));
     swatchButton.setAttribute('data-swatch', String(state.swatch));
     swatchButton.replaceChildren(
       auto
         ? el('span', { class: 'lc-btn-icon', html: icon('swatch-auto') })
         : el('span', { class: 'lc-dot', attrs: { style: `background:${colors[Number(state.swatch) % colors.length]}` } }),
-      el('span', { class: 'lc-btn-label', text: 'Colour' }),
+      el('span', { class: 'lc-btn-label', text: t('Colour') }),
     );
     swatches.replaceChildren(
       el('button', {
         class: 'lc-swatch lc-swatch-auto',
         html: icon('swatch-auto'),
-        title: 'Auto: match what you build on',
-        attrs: { type: 'button', 'aria-label': 'Auto colour', 'aria-pressed': String(auto), 'data-swatch': 'auto' },
+        title: t('Auto: match what you build on'),
+        attrs: { type: 'button', 'aria-label': t('Auto colour'), 'aria-pressed': String(auto), 'data-swatch': 'auto' },
         on: { click: () => api.setSwatch('auto') },
       }),
       ...Array.from({ length: PALETTE_SIZE }, (_, i) =>
@@ -164,7 +187,7 @@ export function createTray(start: Partial<TrayState> = {}): Tray {
           class: 'lc-swatch',
           attrs: {
             type: 'button',
-            'aria-label': `Colour ${i + 1}`,
+            'aria-label': t('Colour {n}', { n: i + 1 }),
             'aria-pressed': String(state.swatch === i),
             'data-swatch': String(i),
             style: `--c:${colors[i % colors.length]}`,

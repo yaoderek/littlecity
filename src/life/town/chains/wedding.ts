@@ -47,6 +47,7 @@
 // couple cannot get there, or the town changes under the column (then the
 // procession breaks up and walks to the square as it can).
 
+import { phrase } from '@/core/phrase';
 import { CELL_H, DIR4, key, keyX, keyY, keyZ, type CellKey } from '@/core/grid';
 import { lookOf } from '@/parts/people/person';
 import { MeshBuilder } from '@/gen/mesh';
@@ -477,7 +478,7 @@ export function weddingChain(): WeddingChain {
     phase = 'gather';
     scene = scenesOf(board).begin({
       kind: 'wedding',
-      title: 'Wedding bells at the chapel',
+      title: phrase('Wedding bells at the chapel'),
       big: true,
       focus: () => chain.focus,
       noteworthy: () => phase !== 'none' && phase !== 'gather',

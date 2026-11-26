@@ -10,6 +10,7 @@
 // over the other, under a third: 2026-11-24, 84 of about 160 phone players pressed Finish now, half of them
 // within four seconds.)
 
+import { t } from '@/i18n';
 import { el, iconButton } from './dom';
 
 const KEY = 'lc:welcomed';
@@ -76,7 +77,7 @@ export function maybeWelcome(root: HTMLElement, host: WelcomeHost): Welcome {
   const empty = (): HTMLElement =>
     el('button', {
       class: 'lc-text-btn',
-      text: 'Start empty',
+      text: t('Start empty'),
       attrs: { type: 'button', 'data-ui': 'welcome-empty' },
       on: {
         click: () => {
@@ -87,33 +88,33 @@ export function maybeWelcome(root: HTMLElement, host: WelcomeHost): Welcome {
     });
   /** The phone's: one line and two buttons. */
   const showCompact = (over: HTMLElement): void => {
-    said = el('span', { class: 'lc-welcome-said', text: 'A town to start you off' });
+    said = el('span', { class: 'lc-welcome-said', text: t('A town to start you off') });
     skip = el('button', {
       class: 'lc-text-btn lc-primary',
-      text: 'Skip',
+      text: t('Skip'),
       attrs: { type: 'button', 'data-ui': 'welcome-skip' },
       on: {
         click: () => {
-          said!.textContent = 'Finishing…';
+          said!.textContent = t('Finishing…');
           skip!.remove();
           host.skip?.();
         },
       },
     });
-    card = el('div', { class: 'lc-card lc-welcome lc-welcome-mini', attrs: { 'data-ui': 'welcome', role: 'status', 'aria-label': 'Welcome to Little City' } }, [said, skip, empty()]);
+    card = el('div', { class: 'lc-card lc-welcome lc-welcome-mini', attrs: { 'data-ui': 'welcome', role: 'status', 'aria-label': t('Welcome to Little City') } }, [said, skip, empty()]);
     over.append(card);
     window.addEventListener('pointerdown', outside, true);
   };
   const show = (): void => {
     const over = host.compact?.() ?? null;
     if (over) return showCompact(over);
-    card = el('div', { class: 'lc-card lc-welcome', attrs: { 'data-ui': 'welcome', role: 'status', 'aria-label': 'Welcome to Little City' } }, [
-      iconButton('close', 'Close', { class: 'lc-welcome-close', attrs: { 'data-ui': 'welcome-close' }, on: { click: remove } }),
-      el('strong', { text: 'Welcome to Little City' }),
-      el('p', { text: 'Here is a town to start you off. Build on it, change it, or begin with an empty island.' }),
+    card = el('div', { class: 'lc-card lc-welcome', attrs: { 'data-ui': 'welcome', role: 'status', 'aria-label': t('Welcome to Little City') } }, [
+      iconButton('close', t('Close'), { class: 'lc-welcome-close', attrs: { 'data-ui': 'welcome-close' }, on: { click: remove } }),
+      el('strong', { text: t('Welcome to Little City') }),
+      el('p', { text: t('Here is a town to start you off. Build on it, change it, or begin with an empty island.') }),
       el('button', {
         class: 'lc-text-btn',
-        text: 'Empty island instead',
+        text: t('Empty island instead'),
         attrs: { type: 'button', 'data-ui': 'welcome-empty' },
         on: {
           click: () => {
@@ -146,7 +147,7 @@ export function maybeWelcome(root: HTMLElement, host: WelcomeHost): Welcome {
     grown() {
       if (!said || !card) return;
       skip?.remove();
-      said.textContent = 'It’s yours. Tap to build!';
+      said.textContent = t('It’s yours. Tap to build!');
     },
     dispose() {
       if (timer !== null) clearTimeout(timer);

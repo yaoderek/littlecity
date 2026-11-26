@@ -21,6 +21,7 @@
 // over that one), and otherwise filed in My towns as a town of its own. Identical towns are not
 // added twice. Settings are copied only where this site has none.
 
+import { LANG_KEY, loadLanguage, pickLang, t } from '@/i18n';
 import { SAVE_KEY } from '@/world/save';
 import { browserLibrary, type TownEntry } from './library';
 import { ID_KEY, PREVIOUS_KEY } from './towns';
@@ -72,10 +73,10 @@ export async function moveIn(p: Parcel, storage: Storage | null): Promise<number
     codes.add(e.code);
     moved++;
   };
-  for (const t of p.towns) {
-    if (!isEntry(t) || codes.has(t.code)) continue;
+  for (const town of p.towns) {
+    if (!isEntry(town) || codes.has(town.code)) continue;
     // A different version of a town already here: beside it, named so the two can be told apart.
-    await put(have.has(t.id) ? { ...t, id: crypto.randomUUID(), name: `${t.name} (from the old address)`, named: true } : t);
+    await put(have.has(town.id) ? { ...town, id: crypto.randomUUID(), name: t('{name} (from the old address)', { name: town.name }), named: true } : town);
   }
   /** A town that has no place here: kept in My towns under a new name, unless an identical one is there. */
   const fileAside = async (code: string): Promise<void> => {
@@ -136,14 +137,18 @@ function enter(open: string): void {
 }
 
 async function main(): Promise<void> {
+  // The player's language, as the game picks it (main.ts); English if it cannot be had.
+  await loadLanguage(pickLang({ param: new URLSearchParams(location.search).get('lang'), chosen: storage()?.getItem(LANG_KEY), browser: navigator.languages ?? [navigator.language] }));
   const say = document.getElementById('say');
   const fail = (): void => {
     if (!say) return;
-    say.textContent = 'Your towns could not be moved here. They are safe at the old address: ';
+    // The link goes where the line says {link}.
+    const [before = '', after = ''] = t('Your towns could not be moved here. They are safe at the old address: {link}.').split('{link}');
+    say.textContent = before;
     const a = document.createElement('a');
     a.href = `${OLD_ORIGIN}/littlecity/?again`;
-    a.textContent = 'try again';
-    say.append(a, '.');
+    a.textContent = t('try again');
+    say.append(a, after);
   };
   if (location.search.includes('opener') && window.opener) {
     window.addEventListener('message', (e: MessageEvent) => {

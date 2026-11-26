@@ -7,6 +7,7 @@
 // Ends it when it is over, or at once when undo, a new town or growing one
 // calls everything off (the director's 'reset').
 
+import { phrase } from '@/core/phrase';
 import { columnIndex, keyY, SEA_Y, SIZE_X, SIZE_Z } from '@/core/grid';
 import type { Mat4Like } from '@/core/mat4';
 import { hash, rand } from '@/core/rand';
@@ -179,7 +180,7 @@ export default defineSystem<State>({
 function start(st: State, s: Summon): string | null {
   const raids = st.raids;
   const shape = raids.shape, dressing = raids.dressing;
-  if (!shape || !dressing) return 'the town is not ready yet';
+  if (!shape || !dressing) return phrase('the town is not ready yet');
   let buildings = 0;
   for (const [c, k] of shape.kinds) if (KINDS[k as keyof typeof KINDS]?.building && keyY(c) <= 3) buildings++;
   if (buildings < 3) return 'there is no town here to raid';

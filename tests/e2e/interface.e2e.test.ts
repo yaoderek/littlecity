@@ -450,7 +450,7 @@ describe('desktop: mouse and keys', () => {
   test('the menu: new island asks first; sound toggles; a refusal is shown, not thrown', async () => {
     const { page, errors } = await open(TOWN);
     await page.click('[data-ui="menu-button"]');
-    expect(await js(page, `[...document.querySelectorAll('[data-menu]')].map((b) => b.dataset.menu)`)).toEqual(['grow', 'towns', 'new', 'share', 'postcard', 'download', 'open', 'sound', 'rebuild', 'raiders', 'stats']);
+    expect(await js(page, `[...document.querySelectorAll('[data-menu]')].map((b) => b.dataset.menu)`)).toEqual(['grow', 'towns', 'new', 'share', 'postcard', 'download', 'open', 'sound', 'rebuild', 'raiders', 'stats', 'language']);
 
     // Sound is on until the player turns it off, and the switch governs the music as well.
     expect(await debug(page, 'sound')).toBe(true);

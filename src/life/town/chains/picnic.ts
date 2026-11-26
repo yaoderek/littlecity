@@ -19,6 +19,7 @@
 // and sends everybody home. Cost per step: a few comparisons per picnicker;
 // two instances a family, placed once.
 
+import { phrase } from '@/core/phrase';
 import { keyX, keyZ } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { InstanceHandle } from '@/life/api';
@@ -148,7 +149,7 @@ export function picnicChain(): PicnicChain {
     until = Infinity;
     scene = scenesOf(board).begin({
       kind: 'picnic',
-      title: 'Picnics on the grass',
+      title: phrase('Picnics on the grass'),
       big: true,
       focus: () => (spots[0] ? { x: spots[0].x, y: spots[0].y, z: spots[0].z } : null),
       noteworthy: () => spots.filter((s) => s.blanket).length >= 1,

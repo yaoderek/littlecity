@@ -1999,3 +1999,44 @@ fix `e33edcd`). Two more for round 4: when it finds nobody the saucer
 must not sit on the ground (a minimum hover height everywhere); sailors
 on a ship's deck can be abducted. Both sent to the agent. Still on a
 local preview; nothing live.
+
+**UFO round 4: on the local preview, NOT live, waiting for Derek**
+(2026-11-25). Agent's work at `c390031` (`swarm/ragdoll`); merged with
+the working branch on `preview/ufo-fixes` (worktree
+`.claude/worktrees/preview-ufo`, head `be68c4f`); gate there 2,502
+passed, 12 skipped, clean; preview rebuilt at http://127.0.0.1:5180/
+and http://192.168.68.60:5180/.
+- Sideways glitch: a walker was not held until the beam was fully on
+  (kept walking half a second), then the lift pulled them to the saucer
+  through the Hand's swinging grip (up to 2.29 cells off the beam). Now
+  the saucer glides to straight over its catch, holds them at once with
+  a grip that does not swing, lifts straight up; the beam leans only
+  while searching.
+- Picking: the nearest person to the click among those on screen at
+  the click (canvas less 16 px, not under the tray or a menu; behind a
+  building counts; sailors on deck too), no radius; nobody on screen →
+  search and leave.
+- Never below 2.2 above ground or sea; saucers yield to each other.
+- Sailors on galleons, cogs, galleys and the harbour barge-type ship
+  can be taken (`Crew.take/giveBack`, `crowd.stray`); returned to the
+  deck if the ship is still there, else set down in town. NOT done:
+  the fishing boat, sailboats, the rower, river barges, raiders' boats.
+- Orchestrator checked by real clicks in a browser (four clicks on a
+  grown town: each took the nearest on-screen person, 0.5–5.6 cells
+  away; lowest saucer height 2.60; a lifted person's offset from the
+  beam 0.000). Not verified by anyone: a sailor taken from a ship under
+  way; the "ship gone, set down ashore" path; the sailor wears town
+  clothes while off the ship.
+
+**Derek on UFO round 4 (preview, 2026-11-25 evening):** "better but the
+beam effect still doesn't look very good. The black lines especially
+look very off. It doesn't have the same shader look." Orchestrator's
+close screenshots of the preview build: the sparkles are diamonds with
+black ink outlines (opaque pass, an ink id each); the beam is a flat
+slab of pure cyan with hard polygon edges, no paper grain, a notched
+silhouette with pale shards; the town's ink lines show through it
+nearly black. → the UFO's agent, round 5: a soft turquoise wash with a
+gradient and feathered edges, a clean cone, no black ink in the effect,
+the scene's lines lifted under the light, the phone's cheap form to
+look good too; cost unchanged. From here on no attribution lines in
+commit messages. Still on a local preview; nothing live.

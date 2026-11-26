@@ -39,6 +39,7 @@
 // town opened, or growing one ends it with nothing left drawn or pending.
 // Nothing of it is saved: its fires are ordinary saved damage that mends.
 
+import { phrase } from '@/core/phrase';
 import { DIR4, key, keyX, keyY, keyZ, SEA_Y, type CellKey } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { Barbarian } from '@/parts/people/barbarian';
@@ -1011,7 +1012,7 @@ export class Raid {
     if (!this.scene) {
       this.scene = scenesOf(board).begin({
         kind: 'raid',
-        title: this.kind === 'boats' ? 'Raiders off the coast! Boats are coming in.' : 'Raiders off the coast!',
+        title: this.kind === 'boats' ? phrase('Raiders off the coast! Boats are coming in.') : phrase('Raiders off the coast!'),
         big: true,
         focus: () => this.focus(),
         noteworthy: () => true,

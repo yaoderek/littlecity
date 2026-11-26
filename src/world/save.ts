@@ -81,6 +81,7 @@
 // and other versions with a plain sentence (plan Review Focus 2); saveTown
 // and the autosaver report storage trouble instead of failing (Focus 5).
 
+import { phrase } from '@/core/phrase';
 import { inBounds, key, keyX, keyY, keyZ, NO_CELL, edgeCells, type CellKey, type EdgeKey } from '@/core/grid';
 import { EDGE_KINDS, FLOOR_KINDS, PALETTE_SIZE, type EdgeKind, type FloorKind } from '@/core/kinds';
 import type { Block, Rot, World } from '@/core/world';
@@ -107,9 +108,9 @@ const VERSION_5 = 5;
 /** Section flags (versions 4 and 5) and the kind codes are codec5.ts's: one list for every version. */
 const KNOWN_SECTIONS = SECTION_LAND | SECTION_RUINS;
 
-const NOT_A_TOWN = 'This is not a Little City town.';
-const DAMAGED = 'This town link is damaged or incomplete.';
-const OTHER_VERSION = 'This town was made by a different version of Little City.';
+const NOT_A_TOWN = phrase('This is not a Little City town.');
+const DAMAGED = phrase('This town link is damaged or incomplete.');
+const OTHER_VERSION = phrase('This town was made by a different version of Little City.');
 
 // ───────────────────────────────────────────────────────────── bytes ──
 
@@ -370,7 +371,7 @@ export function decodeTown(code: string): DecodeResult {
 }
 
 function decode(code: string): DecodeResult {
-  if (typeof code !== 'string' || code.trim() === '') return { ok: false, reason: 'There is no town in this link.' };
+  if (typeof code !== 'string' || code.trim() === '') return { ok: false, reason: phrase('There is no town in this link.') };
   const bytes = fromBase64Url(code.trim());
   if (!bytes || bytes.length < 2 || bytes[0] !== 0x4c || bytes[1] !== 0x43) return { ok: false, reason: NOT_A_TOWN };
   if (bytes.length < 3) return { ok: false, reason: DAMAGED };

@@ -9,6 +9,7 @@
 // Cost per step: a distance per big ship on the water; a few comparisons per
 // waver while it lasts.
 
+import { phrase } from '@/core/phrase';
 import { keyX, keyZ, type CellKey } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { LifeStage } from '@/life/api';
@@ -83,7 +84,7 @@ export function welcomeChain(shipsOf: (stage: LifeStage | null) => readonly BigS
     since = board.now;
     stopped = -1;
     welcomed++;
-    scene = scenesOf(board).begin({ kind: 'welcome', title: 'Children waving a ship in', big: false, focus: () => (at !== null ? board.centre(at) : null), noteworthy: () => false, gathering: () => false });
+    scene = scenesOf(board).begin({ kind: 'welcome', title: phrase('Children waving a ship in'), big: false, focus: () => (at !== null ? board.centre(at) : null), noteworthy: () => false, gathering: () => false });
   };
 
   const chain: WelcomeChain = {

@@ -5,6 +5,7 @@
 // walkable tops, edge validity) are exported because town logic and the UI
 // ask the same questions.
 
+import { phrase, type Vars } from '@/core/phrase';
 import {
   above,
   below,
@@ -147,7 +148,8 @@ const CHANGEABLE = new Set<PlacedKind>(['auto', ...AUTO_KINDS]);
 
 // ───────────────────────────────────────────────────────────── verdicts ──
 
-const no = (reason: string): EditResult => ({ ok: false, reason });
+/** Refused, and why: a plain English line (the player reads it in their language through src/i18n `say()`), a piece by `{kind}`. */
+const no = (line: string, vars?: Vars): EditResult => ({ ok: false, reason: vars ? phrase(line, vars) : line });
 const yes: EditResult = { ok: true };
 
 function canPlaceBlockKind(w: World, t: Terrain, cell: CellKey, kind: PlacedKind): EditResult {
@@ -160,10 +162,10 @@ function canPlaceBlockKind(w: World, t: Terrain, cell: CellKey, kind: PlacedKind
   const underBlock = under === NO_CELL ? undefined : w.blocks.get(under);
   const onWindmill = kind === 'windmill' && underBlock?.kind === 'windmill';
   if (underBlock && !placedInfo(underBlock.kind).solid && !onWindmill) {
-    return no(`nothing can be built on a ${underBlock.kind}`);
+    return no('nothing can be built on a {kind}', { kind: underBlock.kind });
   }
   if (info.needsWalkableTop && !onWindmill && !onWalkableTop(w, t, cell)) {
-    return no(`a ${kind} needs firm ground or the top of a solid block`);
+    return no('a {kind} needs firm ground or the top of a solid block', { kind });
   }
   return yes;
 }
@@ -197,18 +199,18 @@ function verdict(w: World, t: Terrain, e: Edit): EditResult {
       if (insideTerrain(t, e.cell)) return no('inside the ground');
       if (!onWalkableTop(w, t, e.cell)) {
         const water = keyY(e.cell) === 0 && groundAt(t, keyX(e.cell), keyZ(e.cell)) === 0;
-        return no(water ? 'floors cannot go on water' : 'a floor needs firm ground or the top of a solid block');
+        return water ? no('floors cannot go on water') : no('a floor needs firm ground or the top of a solid block');
       }
       const b = w.blocks.get(e.cell);
-      if (b && !blockKeepsFloor(w, t, e.cell, b.kind)) return no(`a floor cannot share a cell with a ${b.kind}`);
-      if (w.floors.get(e.cell) === e.floor) return no(`there is already a ${e.floor} there`);
+      if (b && !blockKeepsFloor(w, t, e.cell, b.kind)) return no('a floor cannot share a cell with a {kind}', { kind: b.kind });
+      if (w.floors.get(e.cell) === e.floor) return no('there is already a {kind} there', { kind: e.floor });
       return yes;
     }
     case 'placeEdge': {
       if (!edgeInGrid(e.edge)) return no('outside the map');
       if (!EDGE_KINDS.includes(e.kind)) return no('unknown edge piece');
-      if (w.edges.get(e.edge) === e.kind) return no(`there is already a ${e.kind} there`);
-      if (!edgeIsValid(w, t, e.edge)) return no(`a ${e.kind} edge needs open, firm ground on at least one side`);
+      if (w.edges.get(e.edge) === e.kind) return no('there is already a {kind} there', { kind: e.kind });
+      if (!edgeIsValid(w, t, e.edge)) return no('a {kind} edge needs open, firm ground on at least one side', { kind: e.kind });
       return yes;
     }
     case 'eraseBlock':
@@ -225,8 +227,8 @@ function verdict(w: World, t: Terrain, e: Edit): EditResult {
       const b = w.blocks.get(e.cell);
       if (!b) return no('nothing there');
       if (!validPlacedKind(e.kind)) return no('unknown piece');
-      if (!CHANGEABLE.has(b.kind) || !CHANGEABLE.has(e.kind)) return no(`a ${b.kind} cannot change into a ${e.kind}`);
-      if (b.kind === e.kind) return no(`it is already a ${e.kind}`);
+      if (!CHANGEABLE.has(b.kind) || !CHANGEABLE.has(e.kind)) return no('a {kind} cannot change into a {into}', { kind: b.kind, into: e.kind });
+      if (b.kind === e.kind) return no('it is already a {kind}', { kind: e.kind });
       return canPlaceBlockKind(w, t, e.cell, e.kind);
     }
     case 'setRot': {

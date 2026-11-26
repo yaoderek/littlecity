@@ -28,7 +28,7 @@ npm run dev
 
 `npm run check` runs the types, the lint and the tests. it's typescript and [three.js](https://threejs.org).
 
-production builds send analytics to the key in `.env.production`. hosting your own copy? empty it or put in yours.
+hosting your own copy? keep the analytics key in `.env.production` so plays get counted, and link back to [littlecity.io](https://littlecity.io/).
 
 ## license
 

@@ -21,6 +21,7 @@
 //     tree, path or fence dug down into water): the reason names it.
 // The edit as a whole is refused only when every column is.
 
+import { phrase } from '@/core/phrase';
 import { columnIndex, edgeCells, inColumnBounds, key, keyX, keyY, keyZ, NO_CELL, SIZE_X, SIZE_Y, SIZE_Z, type CellKey, type EdgeKey } from '@/core/grid';
 import { KINDS, placedInfo, type EdgeKind, type FloorKind } from '@/core/kinds';
 import type { Block, Edit, Terrain, World } from '@/core/world';
@@ -70,25 +71,25 @@ function columnsOf(e: LandEdit): Map<number, 1 | -1> | null {
 /** The checks one column can answer on its own, before anything moves. */
 function columnVerdict(w: World, t: Terrain, col: number, dy: 1 | -1): Column | string {
   const x = col % SIZE_X, z = (col / SIZE_X) | 0;
-  if (!inColumnBounds(x, z) || !landEditable(x, z)) return 'the outer five columns of the map stay sea';
+  if (!inColumnBounds(x, z) || !landEditable(x, z)) return phrase('the outer five columns of the map stay sea');
   const h = t.height[col]!;
   let top = h;
   while (top < SIZE_Y && blockIn(w, x, top, z)) top++;
   if (dy < 0) {
-    if (h === 0) return 'this is water already';
+    if (h === 0) return phrase('this is water already');
     return { col, x, z, dy, h, top };
   }
-  if (h >= LAND_MAX) return 'the land can rise no higher';
+  if (h >= LAND_MAX) return phrase('the land can rise no higher');
   if (h === 0) {
     const onWater = blockIn(w, x, 0, z);
     // A dock or bridge stays where it is; an Auto block (a dock while it floats) rides up and adapts.
-    if (onWater && (onWater.kind === 'dock' || onWater.kind === 'arch')) return 'a dock or a bridge stands on this water';
+    if (onWater && (onWater.kind === 'dock' || onWater.kind === 'arch')) return phrase('a dock or a bridge stands on this water');
   }
   // The stack's blocks end at top - 1; the cell `top` may hold a floor or edge pieces, which go to top + 1.
-  if (top >= SIZE_Y) return 'it would push something past the top of the world';
+  if (top >= SIZE_Y) return phrase('it would push something past the top of the world');
   const lying = w.floors.has(key(x, top, z)) || edgesAt(w, x, top, z).length > 0;
-  if (lying && top + 1 >= SIZE_Y) return 'it would push something past the top of the world';
-  if (lying && blockIn(w, x, top + 1, z)) return 'something above is in the way';
+  if (lying && top + 1 >= SIZE_Y) return phrase('it would push something past the top of the world');
+  if (lying && blockIn(w, x, top + 1, z)) return phrase('something above is in the way');
   return { col, x, z, dy, h, top };
 }
 
@@ -169,7 +170,7 @@ function simulate(w: World, t: Terrain, cols: ReadonlyMap<number, Column>): { wo
       // Two pieces would meet in one place: the move is refused, so where this one lands does not matter.
       const [a, b] = edgeCells(e);
       const owner = carried(a) ?? (b === NO_CELL ? undefined : carried(b));
-      if (owner) blame.set(owner.col, 'something beside it is in the way');
+      if (owner) blame.set(owner.col, phrase('something beside it is in the way'));
       continue;
     }
     edges.set(to, k);
@@ -192,7 +193,7 @@ function simulate(w: World, t: Terrain, cols: ReadonlyMap<number, Column>): { wo
     const b = blocks.get(c)!;
     const info = placedInfo(b.kind);
     if (info.waterOnly) {
-      if (!(keyY(c) === 0 && nt.height[columnIndex(keyX(c), keyZ(c))] === 0)) blameCell(c, 'a dock stays on the water');
+      if (!(keyY(c) === 0 && nt.height[columnIndex(keyX(c), keyZ(c))] === 0)) blameCell(c, phrase('a dock stays on the water'));
       continue;
     }
     if (!info.needsWalkableTop) continue;
@@ -208,7 +209,7 @@ function simulate(w: World, t: Terrain, cols: ReadonlyMap<number, Column>): { wo
       if (f === undefined) continue;
       const b = blocks.get(c);
       if (!onTop(next, nt, c)) blameCell(c, `the ${f} there needs dry ground`);
-      else if (b && !(b.kind === 'arch' ? isSolidIn(next, nt, c - STEP) : b.kind !== 'auto' && KINDS[b.kind].keepsFloor)) blameCell(c, 'something above is in the way');
+      else if (b && !(b.kind === 'arch' ? isSolidIn(next, nt, c - STEP) : b.kind !== 'auto' && KINDS[b.kind].keepsFloor)) blameCell(c, phrase('something above is in the way'));
     }
   }
   for (const [e, k] of edges) {
@@ -234,8 +235,8 @@ export function shapeLand(w: World, t: Terrain, e: LandEdit): LandResult | strin
 
 function work(w: World, t: Terrain, e: LandEdit): LandResult | string {
   const wanted = columnsOf(e);
-  if (!wanted) return 'that edit could not be read';
-  if (wanted.size === 0) return 'no ground to shape';
+  if (!wanted) return phrase('that edit could not be read');
+  if (wanted.size === 0) return phrase('no ground to shape');
   const refused = new Map<number, string>();
   const cols = new Map<number, Column>();
   for (const [col, dy] of wanted) {
@@ -266,5 +267,5 @@ export function canShapeLand(w: World, t: Terrain, e: LandEdit): { ok: true } | 
   if (r.moved.size > 0) return yes;
   // The first column's reason (in the order given) is the one to show.
   const first = [...e.up, ...e.down].find((c) => r.refused.has(c));
-  return { ok: false, reason: (first !== undefined && r.refused.get(first)) || 'the ground cannot move here' };
+  return { ok: false, reason: (first !== undefined && r.refused.get(first)) || phrase('the ground cannot move here') };
 }
