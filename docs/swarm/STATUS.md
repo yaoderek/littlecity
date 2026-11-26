@@ -2126,3 +2126,21 @@ a real graphics card. The Windows tests live on the branch
 `test/windows-wait` (workflows that run only there, `tools/wintest`).
 Any new variant of the surface shader costs Windows players about 4 s
 of building each: keep them few.
+
+**2026-11-25, night: preview `preview/next` at :5180 (not live).**
+Orchard ladders back (`fix/orchard-ladders` `b260797`): the ladder
+rests in the fork of its tree, lies on the grass beside a stump or a
+burnt or regrowing tree (done in `src/resolve/ruins.ts`), no picker at
+a fallen one; weaker in summer, where the top half is in the leaves.
+Fishing back (`fix/fishing-line` `f5a2023`): rod longer, line to a
+float on the sea, fishers at the dock's edge (`PEOPLE.fishReach`), but
+it fails three crowd tests in the gate (a jump in `under-fire`, 31
+sustained overlaps against 30 and one walking backwards in `solid`;
+pass on the base and on the orchard fix alone) → agent sent back, not
+in the preview. Raids back (`swarm/barbarians` `a6c82ca`): land at the
+shore nearest the click, any number at once, a ceiling of 40 raiders
+alive (24 on a phone), one shared undo step; phone-sized page p95
+34 ms at 10 raids and 126 ms at 20, fires suspected. The orchestrator
+added German and Turkish for the raid's reworded lines (`6c8dfcd`).
+`preview/next` = working branch `3f21dc3` (live `c1d6604`) + orchard +
+raids; gate running. Garrison sally: raid agent resumed for it.
