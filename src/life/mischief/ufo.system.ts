@@ -516,7 +516,7 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         phase(s, 'done');
         break;
       }
-      const { y: hy, ground } = hoverAt(t, st.shape, spot.x, spot.z);
+      const { y: hy } = hoverAt(t, st.shape, spot.x, spot.z);
       s.lane = freeLane(st, s);
       s.wait = 0;
       s.from = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'back');
@@ -594,13 +594,6 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       }
     }
   }
-}
-
-/** Leans the beam from the hatch to (x, z) on the ground under it. */
-function aimAt(s: Saucer, x: number, z: number): void {
-  const dx = x - s.x, dz = z - s.z, d = Math.hypot(dx, dz), len = Math.max(0.2, s.y - s.ground);
-  s.lean = Math.min(1.1, Math.atan2(d, len));
-  s.leanYaw = Math.atan2(dx, dz);
 }
 
 /** Where it brings them back: a walkable spot (a street, a square, the beach) away from where it took them. */
