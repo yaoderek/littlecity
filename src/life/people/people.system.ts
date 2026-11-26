@@ -18,7 +18,7 @@ import { bubbleMesh, castLine, castLineMesh, floatMesh, kiteMesh, lineMesh, TOOL
 import { wakeRing } from '../boats/afloat';
 import { buildPerson, DESIGN_HEIGHT, lookOf, PIECES, rigOf, type Look, type Rig } from '@/parts/people/person';
 import { poseOf, rigMatrices, sitDrop } from '@/parts/people/pose';
-import type { NavDoor } from '@/resolve/plan';
+import type { DressingPlan, NavDoor } from '@/resolve/plan';
 import { PEOPLE, PERSON } from '@/style/people';
 import { obstaclesOf, setCrowd, setDoorTable } from '../doors/table';
 import { deferLamp, lightLamp } from '../dusk/lamps.system';
@@ -221,6 +221,36 @@ interface Drawn {
   cast?: { line: InstanceHandle; float: InstanceHandle; tugged: boolean; ring: number } | null;
   /** The fishing pose's tug on the line is on (the float dips). */
   tug?: boolean;
+  /** Fishing: how far the figure is drawn from its place in the crowd, stepped up to the dock's edge; which foot leads. */
+  edgeX?: number;
+  edgeZ?: number;
+  edgeStride?: boolean;
+}
+
+/**
+ * Fishing: the crowd keeps a fisher on the fishing spot (on the walking graph, 0.3 out from the middle of the cell);
+ * the figure steps from there up to PEOPLE.fishReach out, toward where it faces, so it stands at the dock's edge in
+ * front of a pier head's seat and bucket with its rod well out over the water, and steps back when it stops. Moves
+ * `d.edgeX`, `d.edgeZ` toward that (or back to nothing) at PEOPLE.fishStep; true while it is stepping.
+ */
+function stepToEdge(p: Person, d: Drawn, fishing: boolean): boolean {
+  let tx = 0, tz = 0;
+  if (fishing) {
+    const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
+    // How far out it stands now, from the middle of its cell toward where it faces.
+    const out = (p.x - (Math.floor(p.x) + 0.5)) * fx + (p.z - (Math.floor(p.z) + 0.5)) * fz;
+    const step = Math.max(0, Math.min(PEOPLE.fishReach - 0.3, PEOPLE.fishReach - out));
+    tx = fx * step;
+    tz = fz * step;
+  }
+  const dx = tx - (d.edgeX ?? 0), dz = tz - (d.edgeZ ?? 0);
+  const gap = Math.hypot(dx, dz);
+  if (gap < 1e-6) return false;
+  const k = Math.min(1, PEOPLE.fishStep / PERSON.drawRate / gap);
+  d.edgeX = (d.edgeX ?? 0) + dx * k;
+  d.edgeZ = (d.edgeZ ?? 0) + dz * k;
+  d.edgeStride = !d.edgeStride;
+  return true;
 }
 
 /**
@@ -320,11 +350,34 @@ interface State {
 interface Sea {
   height: Uint8Array;
   kinds: ReadonlyMap<CellKey, unknown>;
+  /** Boats lying at their moorings and berths: (x, z) and how far round it the water is taken up. Read at sync. */
+  boats: readonly (readonly [x: number, z: number, r: number])[];
+}
+
+/** Room taken on the water round a rowboat's mooring (it lies 0.44 out and swings, 0.62 long) and a fishing boat's berth. */
+const ROWBOAT_ROOM = 0.85;
+const BERTH_ROOM = 0.75;
+
+/** The boats at rest in a dressing plan, from their moorings (rowboats) and berths (the fishing boat). */
+function boatsOf(dressing: DressingPlan | null, stage: LifeStage): Sea['boats'] {
+  const out: [number, number, number][] = [];
+  for (const a of dressing?.actors ?? []) {
+    if (a.type === 'rowboat' && a.at && 'socket' in a.at) {
+      const m = stage.socket(a.at.socket);
+      if (m) out.push([m[12]!, m[14]!, ROWBOAT_ROOM]);
+    } else if (a.type === 'fishing-boat') {
+      const at = a.params as { berthX?: unknown; berthZ?: unknown } | undefined;
+      const x = Number(at?.berthX), z = Number(at?.berthZ);
+      if (Number.isFinite(x) && Number.isFinite(z)) out.push([x, z, BERTH_ROOM]);
+    }
+  }
+  return out;
 }
 
 /**
  * Open sea straight under (x, z): no land within half a cell (the drawn shore spills a little sand over the water
- * cells next to it), and nothing built in its column from the water up to `top` (a deck, a boat house).
+ * cells next to it), nothing built in its column from the water up to `top` (a deck, a boat house), and no boat
+ * lying there at its mooring or berth (a sailboat under way, or a boat rowed off, is not looked for).
  */
 function openWater(sea: Sea | null, x: number, z: number, top: number): boolean {
   if (!sea) return false;
@@ -334,6 +387,7 @@ function openWater(sea: Sea | null, x: number, z: number, top: number): boolean 
   }
   const cx = Math.floor(x), cz = Math.floor(z);
   for (let y = 0; y * CELL_H < top; y++) if (sea.kinds.has(key(cx, y, cz))) return false;
+  for (const [bx, bz, r] of sea.boats) if ((x - bx) ** 2 + (z - bz) ** 2 < r * r) return false;
   return true;
 }
 const SHORE_SAMPLES: readonly (readonly [number, number])[] = [[0, 0], [0.5, 0], [-0.5, 0], [0, 0.5], [0, -0.5], [0.35, 0.35], [0.35, -0.35], [-0.35, 0.35], [-0.35, -0.35]];
@@ -425,6 +479,7 @@ function draw(p: Person, d: Drawn, stage: LifeStage, gust: boolean): void {
     d.askew?.release();
     d.askew = null;
     d.finery?.setVisible(false);
+    d.edgeX = d.edgeZ = 0;
     return;
   }
   // Seasons: each puts on (or takes off) their winter things at their own point as it turns cold.
@@ -457,9 +512,9 @@ function draw(p: Person, d: Drawn, stage: LifeStage, gust: boolean): void {
   const name = p.react ?? p.pose;
   const walking = !tumble?.pose && (name === 'walk' || name === 'run' || name === 'panic');
   const pose = tumble?.pose ? { ...tumble.pose } : poseOf(name, walking ? p.stride : p.poseTime, p.rank);
-  // L26: a strong gust, and a hand goes to the hat.
   // Fishing: the pose's tug on the line (it leans back), which dips the float (drawCast).
   d.tug = name === 'fish' && pose.lean < 0;
+  // L26: a strong gust, and a hand goes to the hat.
   if (gust && d.look.hat !== 'none' && (walking || name === 'stand')) {
     pose.armR = 2.95;
     pose.outR = -0.2;
@@ -471,6 +526,12 @@ function draw(p: Person, d: Drawn, stage: LifeStage, gust: boolean): void {
     (sky.rain > 0.25 && !p.load && rand(0, p.id, 'umbrella') < 0.75 && (walking || name === 'stand' || name === 'look' || name === 'chat')
       ? UMBRELLAS[Math.floor(rand(0, p.id, 'umbrella-colour') * UMBRELLAS.length)]!
       : null);
+  // Fishing: a short step up to the dock's edge as they start, and back as they stop (only the figure moves).
+  if (stepToEdge(p, d, tool === 'rod' && name === 'fish' && p.mode === 'linger' && !p.goal?.errand?.tag?.startsWith('fire:'))) {
+    const s = d.edgeStride ? 0.35 : -0.35;
+    pose.legL = s;
+    pose.legR = -s;
+  }
   // A load is in the hands whatever the pose (a cheer, a turn to look, a flinch): only the scythe leaves them, to mow.
   const holding = p.load !== null && name !== 'mow';
   const longTool = applyHold(pose, d.rig, {
@@ -485,7 +546,7 @@ function draw(p: Person, d: Drawn, stage: LifeStage, gust: boolean): void {
   const away = edge ? 1 - p.fade : 0;
   // Down below the water (SEA_Y) by the end, head and all: a step out, then the drop.
   const depth = Math.max(0.5, p.y - SEA_Y + DESIGN_HEIGHT * scale + 0.05);
-  const px = p.x + p.edgeX * away + (p.drawX ?? 0), pz = p.z + p.edgeZ * away + (p.drawZ ?? 0);
+  const px = p.x + p.edgeX * away + (p.drawX ?? 0) + (d.edgeX ?? 0), pz = p.z + p.edgeZ * away + (p.drawZ ?? 0) + (d.edgeZ ?? 0);
   // The drop comes over the last part of the way: off a dock's end at once, down a beach into the shallows.
   const len = Math.hypot(p.edgeX, p.edgeZ);
   const from = len > 1 ? 0.62 : 0.15;
@@ -678,7 +739,7 @@ export default defineSystem<State>({
     return { crowd, town, drawn, bubbleMesh: null, lineMesh: null, standIns: [], tick: -1, fresh: true, unsubscribe, art: null, sea: null };
   },
   sync(state, next, _prev, ctx) {
-    state.sea = { height: next.shape.facts.terrain.height, kinds: next.shape.facts.kinds };
+    state.sea = { height: next.shape.facts.terrain.height, kinds: next.shape.facts.kinds, boats: next.dressing ? boatsOf(next.dressing, ctx.stage) : (state.sea?.boats ?? []) };
     if (!next.dressing) {
       // Just after an edit: the town's chains take the new shape now (L54 reads what landed).
       state.town.sync(next.shape, null, ctx.signals.time);
