@@ -13,6 +13,7 @@ import { ENTRIES, GROUPS, type GuideEntry } from '@/guide/entries';
 import { mischiefGuideSection } from './mischief';
 import { contentsOf, holds, propsOf, type TownContents } from '@/guide/proof';
 import { track } from '@/app/analytics';
+import { t } from '@/i18n';
 import type { DressingPlan, ShapePlan } from '@/resolve/plan';
 import { el, iconButton } from './dom';
 import { icon } from './icons';
@@ -51,13 +52,13 @@ export function pictureUrl(id: string): string {
 }
 
 export function createGuide(host: GuideHost): Guide {
-  const button = iconButton('guide', 'Guide to special buildings', {
+  const button = iconButton('guide', t('Guide to special buildings'), {
     class: 'lc-round',
-    title: 'Guide: special buildings and how to get them',
+    title: t('Guide: special buildings and how to get them'),
     attrs: { 'aria-expanded': 'false', 'aria-controls': 'lc-guide', 'data-ui': 'guide-button' },
   });
-  const close = iconButton('close', 'Close the guide', { class: 'lc-guide-close', attrs: { 'data-ui': 'guide-close' } });
-  const scroller = el('div', { class: 'lc-guide-pages', attrs: { tabindex: '0', 'aria-label': 'Special buildings' } });
+  const close = iconButton('close', t('Close the guide'), { class: 'lc-guide-close', attrs: { 'data-ui': 'guide-close' } });
+  const scroller = el('div', { class: 'lc-guide-pages', attrs: { tabindex: '0', 'aria-label': t('Special buildings') } });
   const panel = el(
     'aside',
     { class: 'lc-guide', attrs: { id: 'lc-guide', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': 'lc-guide-title', hidden: '', 'data-ui': 'guide' } },
@@ -65,8 +66,8 @@ export function createGuide(host: GuideHost): Guide {
       el('div', { class: 'lc-guide-grip', attrs: { 'aria-hidden': 'true' } }),
       el('header', { class: 'lc-guide-head' }, [
         el('div', { class: 'lc-guide-titles' }, [
-          el('h2', { text: 'Field guide', attrs: { id: 'lc-guide-title' } }),
-          el('p', { text: 'Special buildings and the things your town does, and how to get them' }),
+          el('h2', { text: t('Field guide'), attrs: { id: 'lc-guide-title' } }),
+          el('p', { text: t('Special buildings and the things your town does, and how to get them') }),
         ]),
         close,
       ]),
@@ -90,11 +91,11 @@ export function createGuide(host: GuideHost): Guide {
         }),
         el('div', { class: 'lc-guide-words' }, [
           el('h4', {}, [
-            el('span', { text: entry.name }),
-            entry.group === 'auto' ? null : el('span', { class: 'lc-guide-tick', html: tick, title: 'In your town', attrs: { 'aria-label': 'in your town' } }),
+            el('span', { text: t(entry.name) }),
+            entry.group === 'auto' ? null : el('span', { class: 'lc-guide-tick', html: tick, title: t('In your town'), attrs: { 'aria-label': t('in your town') } }),
           ]),
-          entry.when ? el('p', { class: 'lc-guide-when', text: entry.when }) : null,
-          el('p', { text: entry.how }),
+          entry.when ? el('p', { class: 'lc-guide-when', text: t(entry.when) }) : null,
+          el('p', { text: t(entry.how) }),
         ]),
       ]);
       cards.set(entry.id, { entry, card });
@@ -104,7 +105,7 @@ export function createGuide(host: GuideHost): Guide {
     if (group.id !== 'auto') counts.set(group.id, count);
     scroller.append(
       el('section', { class: `lc-guide-group lc-guide-${group.id}`, attrs: { 'data-group': group.id } }, [
-        group.id === 'auto' ? null : el('h3', {}, [el('span', { text: group.title }), count]),
+        group.id === 'auto' ? null : el('h3', {}, [el('span', { text: t(group.title) }), count]),
         list,
       ]),
     );
@@ -137,7 +138,7 @@ export function createGuide(host: GuideHost): Guide {
     for (const [group, count] of counts) {
       const all = ENTRIES.filter((e) => e.group === group);
       const got = all.filter((e) => found.has(e.id)).length;
-      count.textContent = got ? `${got} of ${all.length}` : '';
+      count.textContent = got ? t('{got} of {all}', { got, all: all.length }) : '';
     }
   };
   let stale = true;

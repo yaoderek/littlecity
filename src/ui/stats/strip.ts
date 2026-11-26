@@ -1,6 +1,7 @@
 // The strip at the top right: how many live here, a face for how they feel, and one silly count.
 // Plain DOM, three chips in one card; it never takes a tap. (The numbers come from watch.ts.)
 
+import { num, t } from '@/i18n';
 import { el } from '@/ui/dom';
 import type { StatsView } from './watch';
 import './stats.css';
@@ -26,7 +27,7 @@ const FACES = [
 const face = (mood: number) => FACES[mood >= 80 ? 0 : mood >= 60 ? 1 : mood >= 40 ? 2 : mood >= 20 ? 3 : 4]!;
 
 /** Plain digits where there is nothing to group: the first toLocaleString loads the browser's number tables (10 ms, 60 on a slow phone, in the first frame). */
-const grouped = (n: number): string => (n > -1000 && n < 1000 ? String(n) : n.toLocaleString());
+const grouped = (n: number): string => (n > -1000 && n < 1000 ? String(n) : num(n));
 /** Text is written only when it changes: shown four times a second, it would repaint the strip four times a second. */
 const write = (node: HTMLElement, text: string): void => {
   if (node.textContent !== text) node.textContent = text;
@@ -41,8 +42,8 @@ export function createStatsStrip(root: HTMLElement) {
   const silly = el('span', { class: 'lc-stat lc-stat-silly', attrs: { hidden: '' } }, [label, count]);
   const sr = (text: string) => el('span', { class: 'lc-stat-sr', text });
   const strip = el('div', { class: 'lc-stats lc-card' }, [
-    el('span', { class: 'lc-stat' }, [el('span', { class: 'lc-stat-glyph', html: PEOPLE }), sr('Residents '), people]),
-    el('span', { class: 'lc-stat' }, [moodIcon, sr('Happiness '), mood, sr(' of 100')]),
+    el('span', { class: 'lc-stat' }, [el('span', { class: 'lc-stat-glyph', html: PEOPLE }), sr(`${t('Residents')} `), people]),
+    el('span', { class: 'lc-stat' }, [moodIcon, sr(`${t('Happiness')} `), mood, sr(` ${t('of 100')}`)]),
     silly,
   ]);
   root.append(strip);
@@ -78,7 +79,7 @@ export function createStatsStrip(root: HTMLElement) {
         return;
       }
       const swap = () => {
-        label.textContent = v.silly!.label;
+        label.textContent = t(v.silly!.label);
         count.textContent = latest;
         silly.classList.remove('lc-stat-out');
       };

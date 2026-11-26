@@ -11,6 +11,7 @@
 //   button.addEventListener('click', () => s.toggle(button));
 //   // each frame: s.refresh()   (the thumb follows the town while it glides)
 
+import { t } from '@/i18n';
 import { el } from './dom';
 import { icon } from './icons';
 import './slider.css';
@@ -74,7 +75,7 @@ export function createSlider(o: SliderOptions): Slider {
     [rail, el('div', { class: 'lc-slider-stops' }, stops)],
   );
   const now = el('span', { class: 'lc-slider-now' });
-  const card = el('div', { class: 'lc-card lc-slider', attrs: { 'data-ui': `slider-${o.name}`, hidden: '' } }, [el('div', { class: 'lc-slider-title', text: `${o.label}: ` }, [now]), track]);
+  const card = el('div', { class: 'lc-card lc-slider', attrs: { 'data-ui': `slider-${o.name}`, hidden: '' } }, [el('div', { class: 'lc-slider-title', text: `${t('{label}:', { label: o.label })} ` }, [now]), track]);
 
   let anchor: HTMLElement | null = null;
   let dragging = false;

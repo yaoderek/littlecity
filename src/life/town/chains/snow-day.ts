@@ -24,6 +24,7 @@
 // Cost per step: a few comparisons per player and a matrix per ball rolling
 // or in the air (three at most at once).
 
+import { phrase } from '@/core/phrase';
 import { keyX, keyZ, type CellKey } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { InstanceHandle } from '@/life/api';
@@ -205,7 +206,7 @@ export function snowDayChain(): SnowDayChain {
     building = null;
     scene = scenesOf(board).begin({
       kind: 'snow',
-      title: 'A snowball fight on the square',
+      title: phrase('A snowball fight on the square'),
       big: true,
       focus: () => (man ? centre(board) : null),
       noteworthy: () => phase === 'build' || phase === 'fight',

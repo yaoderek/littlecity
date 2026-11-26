@@ -605,6 +605,11 @@ const DRAWINGS: Record<string, string> = {
   volume:
     `<path d="M10.6 19.6 L17.6 19.4 L26.6 11.6 L26.8 36.4 L17.6 28.6 L10.8 28.6 Z" fill="${C.white}"/>` +
     `<path stroke-width="2.4" d="M32 18.4 Q36.4 24 32 29.8"/>`,
+  // The menu's Language row: a globe, its meridians and parallels.
+  language:
+    `<path stroke-width="2.6" d="M24 8.4 Q39.8 8.6 39.6 24.2 Q39.4 39.8 23.8 39.6 Q8.2 39.4 8.4 23.8 Q8.6 8.2 24 8.4 Z" fill="${C.shallow}"/>` +
+    `<g stroke-width="1.9"><path d="M24 8.6 Q15.6 16 15.8 24 Q16 32 24 39.4 M24 8.6 Q32.4 16 32.2 24 Q32 32 24 39.4 M24.1 8.6 L23.9 39.4"/>` +
+    `<path d="M10.4 17.4 Q24 15.8 37.6 17.6 M8.6 24.2 Q24 23.2 39.4 23.8 M10.4 30.6 Q24 32.2 37.6 30.4"/></g>`,
   tune:
     `<path stroke-width="2.4" d="M8 14 L40 13.8 M8 24.2 L40 24 M8 34.2 L40 34"/>` +
     `<circle cx="17" cy="14" r="3.6" fill="${C.yellow}"/><circle cx="31" cy="24" r="3.6" fill="${C.pink}"/><circle cx="21" cy="34" r="3.6" fill="${C.sea}"/>`,

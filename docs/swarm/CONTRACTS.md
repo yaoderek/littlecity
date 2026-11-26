@@ -737,6 +737,23 @@ await app.close();                                             // afterAll
 undo, drag does not place). **Lint** is `eslint.config.js`; `tests/lint.test.ts`
 shows what each directory may and may not do.
 
+**Words the player reads are in seven languages** (`@/i18n`, since 2026-11-25:
+English, Simplified Chinese, Spanish, French, Brazilian Portuguese, Japanese,
+Korean). Any new or reworded line, in the same change:
+
+```ts
+t('Grow a town')                                    // never a bare string in el() text, title, aria-label, a toast
+t('Open {name}', { name })                          // details by name, never glued: no 'Sound: ' + state
+t({ one: '{n} house', other: '{n} houses' }, { n }) // counts
+phrase('a {kind} needs firm ground', { kind })      // the core (src/world): English kept, shown translated by say()
+```
+
+Call `t()` where the line is shown, never at module load. Then `npm run translate`
+lists the missing lines per language: write each translation in
+`src/i18n/locales/<lang>.json` (plain, short, the game's voice; check it by
+translating it back to English). `tools/translate/lines.test.ts` fails while
+any line is missing or English skips `t()`.
+
 ## 15. Deviations from plan section 4
 
 Substance is kept throughout. Each change is here with its reason.

@@ -25,6 +25,7 @@
 // Cost per step: a few comparisons per diner; a handful of instances (a table
 // a cell, the lanterns, a dish a place) placed once.
 
+import { phrase } from '@/core/phrase';
 import { DIR4 } from '@/core/grid';
 import { rand } from '@/core/rand';
 import type { InstanceHandle } from '@/life/api';
@@ -230,7 +231,7 @@ export function supperChain(): SupperChain {
     toasted = false;
     scene = scenesOf(board).begin({
       kind: 'supper',
-      title: 'A harvest supper on the square',
+      title: phrase('A harvest supper on the square'),
       big: true,
       focus: () => {
         const c = posts[Math.floor(posts.length / 2)];

@@ -20,6 +20,8 @@
 // festival|<year 0..1> and ?weather=auto|clear|cloudy|rain|storm|fog|wind|snow hold them (a scenario
 // can name them too), and &settle=1 brings the weather in at once (settled snow included).
 //
+// The words are in the player's language (src/i18n): ?lang=en|zh|es|fr|pt|ja|ko shows one without remembering it.
+//
 // window.__lc is the debug handle browser tests and the console use.
 
 import { sceneNote, type SceneNote } from './scene-note';
@@ -51,6 +53,7 @@ import { createMusic } from './music';
 import { browserLibrary } from './library';
 import { createKeeper, ID_KEY } from './towns';
 import { dismissLoader } from './loader';
+import { currentLang, LANG_KEY, loadLanguage, pickLang, t, type Lang } from '@/i18n';
 
 function storage(): Storage | null {
   try {
@@ -69,6 +72,10 @@ function freshIsland(seed: number, pinned?: TerrainGen): GameStart {
 /** A saved or shared town: on the island its own generator made (World.terrainGen; absent = 1). */
 const townOf = (world: World): GameStart => ({ world, terrain: terrainOf(world) });
 const newSeed = (): number => hash(Date.now() | 0, 'island', Math.floor(Math.random() * 0x7fffffff)) | 0;
+
+// ── which language (src/i18n) ────────────────────────────────────────────
+// Before anything says a word: ?lang= (a preview), the player's choice in the menu, the browser's languages.
+await loadLanguage(pickLang({ param: new URLSearchParams(location.search).get('lang'), chosen: storage()?.getItem(LANG_KEY), browser: navigator.languages ?? [navigator.language] }));
 
 // ── which town ───────────────────────────────────────────────────────────
 const params = new URLSearchParams(location.search);
@@ -89,7 +96,7 @@ const keeper = createKeeper({
   storage: storage(),
   library: browserLibrary(storage()).then((r) => r.library),
   worth: isTown,
-  onTrouble: () => ui?.feedback.toast('My towns could not be written just now. The town you are on is still saved.'),
+  onTrouble: () => ui?.feedback.toast(t('My towns could not be written just now. The town you are on is still saved.')),
 });
 
 const saved = scn || seedParam !== null ? null : loadTown(storage());
@@ -138,7 +145,7 @@ const autosave = createAutosave({
   storage: storage(),
   world: () => game.world,
   write: (w) => keeper.save(w),
-  onFail: () => ui?.feedback.toast('This browser will not let the town be saved, so it lasts only until you close the page.'),
+  onFail: () => ui?.feedback.toast(t('This browser will not let the town be saved, so it lasts only until you close the page.')),
 });
 autosave.enabled = !scn && !visiting;
 
@@ -266,6 +273,25 @@ function render(): void {
 ui = createInterface({
   view,
   game,
+  language: {
+    current: currentLang,
+    // The town is saved, the choice remembered, and the page opened again in the new language (the
+    // interface is built once, in one language). A ?lang= in the address would win, so it goes.
+    choose(lang: Lang) {
+      try {
+        storage()?.setItem(LANG_KEY, lang);
+      } catch {
+        // not remembered: this page still changes
+      }
+      autosave.flush();
+      const url = new URL(location.href);
+      url.searchParams.set('lang', lang);
+      if (storage()?.getItem(LANG_KEY) === lang) url.searchParams.delete('lang');
+      // The same address with a #town in it would only move to the anchor: reload it.
+      if (url.toString() === location.href) location.reload();
+      else location.replace(url.toString());
+    },
+  },
   stats: {
     get on() {
       return statsOn;
@@ -321,7 +347,7 @@ ui = createInterface({
     leaveSpecialTown();
     open(townOf(world));
     autosave.schedule();
-    ui?.feedback.toast('Town opened. It is in My towns now too.');
+    ui?.feedback.toast(t('Town opened. It is in My towns now too.'));
   },
   growing(name, regrow) {
     // Grown over a town built by hand: that town stays as it was in My towns, and this is a new one.
@@ -358,7 +384,7 @@ ui = createInterface({
     },
   },
 });
-if (keeper.savedUnreadable) ui.feedback.toast('Your last town could not be opened by this version of Little City. It is kept safe in My towns.');
+if (keeper.savedUnreadable) ui.feedback.toast(t('Your last town could not be opened by this version of Little City. It is kept safe in My towns.'));
 
 // ── analytics (src/app/analytics.ts) ─────────────────────────────────────
 const gpu = view.gpu?.() ?? '';
@@ -372,9 +398,9 @@ if (shared && !shared.ok) {
   ui.feedback.toast(shared.reason);
   history.replaceState(null, '', location.pathname + location.search);
 } else if (shared?.ok && visiting) {
-  ui.feedback.banner('This is a town someone shared with you.', [
+  ui.feedback.banner(t('This is a town someone shared with you.'), [
     {
-      label: 'Keep it as mine',
+      label: t('Keep it as mine'),
       primary: true,
       run() {
         track('shared_town_kept');
@@ -384,7 +410,7 @@ if (shared && !shared.ok) {
       },
     },
     {
-      label: 'Back to my town',
+      label: t('Back to my town'),
       run() {
         track('shared_town_left');
         leaveSpecialTown();

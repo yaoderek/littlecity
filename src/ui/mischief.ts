@@ -20,6 +20,7 @@ import type { Game } from '@/app/game';
 import type { Director, MischiefEvent } from '@/life/mischief/director';
 import { ufosOf } from '@/life/mischief/ufo.system';
 import type { TownView } from '@/render/api';
+import { phrase, t } from '@/i18n';
 import { PALETTE } from '@/style/palette';
 import type { Feedback } from './feedback';
 import type { Pick } from './pick';
@@ -29,20 +30,20 @@ import type { MischiefToolId } from './pieces';
 import { raidsOf } from '@/life/raid/raids';
 
 /** The field guide's Mischief group: what each tool does, in a sentence (no recipe town: nothing here is built). */
-export const MISCHIEF_GUIDE: readonly { tool: MischiefToolId; name: string; how: string }[] = [
-  { tool: 'torch', name: 'Lightning', how: 'Click a building: a little storm cloud gathers over it and a bolt of lightning sets it alight. Timber and thatch burn fast and the wind carries the fire along a row; a street, a wall or water stops it, and stone only scorches.' },
-  { tool: 'bomb', name: 'Bomb', how: 'Click anywhere: a bomb drops, fizzes and goes off. What is right beside it falls to rubble, what is near loses its glass, and every bird takes off. In the sea it only splashes.' },
-  { tool: 'nuke', name: 'Nuke', how: 'The big one: a siren, a long whistle, a white flash, a shockwave racing out, a fireball rising into a mushroom cloud. Everything for streets around is flattened, fires start at the edge, and a crater is left in the ground. One undo puts even the ground back.' },
-  { tool: 'raid', name: 'Raid', how: 'Click near a shore: a longship with a striped sail and a dragon at its prow comes in off the nearest coast, or a little fleet of rowing boats rows in, each to its own landing. The raiders storm ashore roaring, set the thatch alight, kick in doors and carry off sacks, chests and a pig, then sail away with the town in flames. Sink their ship with a bomb or a bolt of lightning and they are stranded: the town chases them into the sea. Undo puts it all back.' },
-  { tool: 'mallet', name: 'Mallet', how: 'Click a building to knock it a stage worse: cracked, then half-wrecked, then a heap of its own bricks.' },
-  { tool: 'hand', name: 'Hand', how: 'Press on anybody out in the town, a dog, a cat, a hen, a sheep, a soldier, the knight or his horse, a little boat or a big ship: up it comes, kicking. Drag it over the roofs and let go to drop it, or flick to throw it across the island. People land, see stars, get up and carry on; whoever they hit goes over too. A ship dropped on the land lies there until it is refloated. Press on a building and it wobbles on its foundations until you let go.' },
-  { tool: 'ufo', name: 'UFO', how: 'Click anywhere: a flying saucer swoops in, hovers over somebody out of doors near where you clicked, and beams them up, kicking and shouting for help. Half a minute later it brings them back somewhere else in town, a little dizzy. With nobody about, it searches the empty streets with its beam and flies off. Three at most at once.' },
-  { tool: 'mend', name: 'Mend', how: 'Click something damaged: scaffolding goes up, and each click mends a stage until it is exactly as you built it. Shift-click mends it at once.' },
+export const mischiefGuide = (): readonly { tool: MischiefToolId; name: string; how: string }[] => [
+  { tool: 'torch', name: t('Lightning'), how: t('Click a building: a little storm cloud gathers over it and a bolt of lightning sets it alight. Timber and thatch burn fast and the wind carries the fire along a row; a street, a wall or water stops it, and stone only scorches.') },
+  { tool: 'bomb', name: t('Bomb'), how: t('Click anywhere: a bomb drops, fizzes and goes off. What is right beside it falls to rubble, what is near loses its glass, and every bird takes off. In the sea it only splashes.') },
+  { tool: 'nuke', name: t('Nuke'), how: t('The big one: a siren, a long whistle, a white flash, a shockwave racing out, a fireball rising into a mushroom cloud. Everything for streets around is flattened, fires start at the edge, and a crater is left in the ground. One undo puts even the ground back.') },
+  { tool: 'raid', name: t('Raid'), how: t('Click near a shore: a longship with a striped sail and a dragon at its prow comes in off the nearest coast, or a little fleet of rowing boats rows in, each to its own landing. The raiders storm ashore roaring, set the thatch alight, kick in doors and carry off sacks, chests and a pig, then sail away with the town in flames. Sink their ship with a bomb or a bolt of lightning and they are stranded: the town chases them into the sea. Undo puts it all back.') },
+  { tool: 'mallet', name: t('Mallet'), how: t('Click a building to knock it a stage worse: cracked, then half-wrecked, then a heap of its own bricks.') },
+  { tool: 'hand', name: t('Hand'), how: t('Press on anybody out in the town, a dog, a cat, a hen, a sheep, a soldier, the knight or his horse, a little boat or a big ship: up it comes, kicking. Drag it over the roofs and let go to drop it, or flick to throw it across the island. People land, see stars, get up and carry on; whoever they hit goes over too. A ship dropped on the land lies there until it is refloated. Press on a building and it wobbles on its foundations until you let go.') },
+  { tool: 'ufo', name: t('UFO'), how: t('Click anywhere: a flying saucer swoops in, hovers over somebody out of doors near where you clicked, and beams them up, kicking and shouting for help. Half a minute later it brings them back somewhere else in town, a little dizzy. With nobody about, it searches the empty streets with its beam and flies off. Three at most at once.') },
+  { tool: 'mend', name: t('Mend'), how: t('Click something damaged: scaffolding goes up, and each click mends a stage until it is exactly as you built it. Shift-click mends it at once.') },
 ];
 
 export function mischiefGuideSection(): HTMLElement {
   const list = el('ul', { class: 'lc-guide-list' });
-  for (const m of MISCHIEF_GUIDE) {
+  for (const m of mischiefGuide()) {
     list.append(
       el('li', { class: 'lc-guide-entry', attrs: { 'data-mischief': m.tool } }, [
         // The raid has a picture of its own (src/life/testing/raid-picture.mjs); the rest show their tool.
@@ -54,8 +55,8 @@ export function mischiefGuideSection(): HTMLElement {
     );
   }
   return el('section', { class: 'lc-guide-group lc-guide-mischief', attrs: { 'data-group': 'mischief' } }, [
-    el('h3', {}, [el('span', { text: 'Mischief' })]),
-    el('p', { class: 'lc-guide-note', text: 'Only your clicks start anything, and undo puts it all back.' }),
+    el('h3', {}, [el('span', { text: t('Mischief') })]),
+    el('p', { class: 'lc-guide-note', text: t('Only your clicks start anything, and undo puts it all back.') }),
     list,
   ]);
 }
@@ -143,7 +144,7 @@ export function createMischiefTools(host: {
     } catch {
       // No storage: the hint shows once a session.
     }
-    feedback.toast(tool === 'mend' ? 'Mending a stage at a time; Shift-click mends it at once.' : 'Undo puts it all back.');
+    feedback.toast(tool === 'mend' ? t('Mending a stage at a time; Shift-click mends it at once.') : t('Undo puts it all back.'));
   };
 
   /** A nuke whites the page out for an instant. */
@@ -171,7 +172,7 @@ export function createMischiefTools(host: {
         const ufos = ufosOf(host.view.stage);
         if (!at || !ufos) return false;
         if (!ufos.call(at[0], at[1], at[2])) {
-          host.refuse('three saucers are about already');
+          host.refuse(phrase('three saucers are about already', {}));
           return false;
         }
         hint(tool);
@@ -209,7 +210,7 @@ export function createMischiefTools(host: {
         }
       }
       if (cell === null) {
-        host.refuse(tool === 'mend' ? 'click something that needs mending' : tool === 'torch' ? 'click a building or a boat' : 'click a building');
+        host.refuse(tool === 'mend' ? phrase('click something that needs mending', {}) : tool === 'torch' ? phrase('click a building or a boat', {}) : phrase('click a building', {}));
         return false;
       }
       let ok: boolean;
@@ -217,13 +218,13 @@ export function createMischiefTools(host: {
         // Lightning (the tool's id is still `torch`): a storm cloud gathers and the bolt sets it alight. On
         // what will not burn the bolt strikes all the same and only flashes.
         ok = director.strike(cell, pick!.point);
-        if (!ok) host.refuse("that won't catch");
+        if (!ok) host.refuse(phrase("that won't catch", {}));
       } else if (tool === 'mallet') {
         ok = director.knock(cell);
-        if (!ok) host.refuse('there is nothing left to knock down');
+        if (!ok) host.refuse(phrase('there is nothing left to knock down', {}));
       } else {
         ok = director.mend(cell, shift);
-        if (!ok) host.refuse('that is not damaged');
+        if (!ok) host.refuse(phrase('that is not damaged', {}));
       }
       if (ok) hint(tool);
       return ok;

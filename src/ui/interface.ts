@@ -29,7 +29,7 @@ import { createFeedback, wiggle, type Feedback } from './feedback';
 import { createFly, type FlyMode, type FlyPhase } from './fly';
 import { createGrowth, onlyStartingTrees, type Growth } from './growth';
 import { planTown, type GrownTown } from '@/townmaker/index';
-import { CHARACTER_NAMES, CHARACTERS, type Character } from '@/townmaker/character';
+import { CHARACTERS, type Character } from '@/townmaker/character';
 import { findIslandForTown, kindWeights, MAY_FALL_BACK, planKind } from '@/townmaker/kinds';
 import { findIsland } from '@/terrain/kinds';
 import { hash } from '@/core/rand';
@@ -42,7 +42,7 @@ import { createMarkers } from './markers';
 import { createMenu } from './menu';
 import { createTownsSheet, type TownsHost } from './towns';
 import { faceZone, pickCell, type Pick } from './pick';
-import { DRAWER_IDS, drawerItems, isLandTool, isMischiefTool, isToolId, paintsRuns, type DrawerId, type ItemId } from './pieces';
+import { allPieceIds, DRAWER_IDS, drawerItems, isLandTool, isMischiefTool, isToolId, paintsRuns, trayItem, type DrawerId, type ItemId } from './pieces';
 import { createMischiefTools } from './mischief';
 import { createHand } from './hand';
 import { mischiefOf } from '@/life/mischief/director';
@@ -51,6 +51,7 @@ import { attachPointer } from './pointer';
 import { createStepper } from './stepper';
 import { createTray, type Tray } from './tray';
 import { INPUT } from '@/style/input';
+import { setKindNames, t, type Lang } from '@/i18n';
 
 export interface InterfaceHost {
   view: TownView;
@@ -89,6 +90,8 @@ export interface InterfaceHost {
   grown?(): void;
   /** Where the interface's elements go. Default: document.body. */
   parent?: HTMLElement;
+  /** The language the game speaks (src/i18n): the one in use, and the player's choice of another. Without it, no menu entry. */
+  language?: { current(): Lang; choose(lang: Lang): void };
 }
 
 export interface Interface {
@@ -148,31 +151,61 @@ export interface GhostSummary {
 
 // The time, season and weather sliders (design section 7; src/ui/slider.ts). Each button shows what
 // is held and opens its slider; a "running" or "auto" stop lets the clock, the year or the sky go on.
-const TIME_STOPS: readonly SliderStop[] = [
-  { id: 'run', label: 'Running', icon: 'time-run' },
-  { id: 'dawn', label: 'Dawn', icon: 'time-dawn' },
-  { id: 'day', label: 'Day', icon: 'time-day' },
-  { id: 'dusk', label: 'Dusk', icon: 'time-dusk' },
-  { id: 'night', label: 'Night', icon: 'time-night' },
+const timeStops = (): readonly SliderStop[] => [
+  { id: 'run', label: t('Running'), icon: 'time-run' },
+  { id: 'dawn', label: t('Dawn'), icon: 'time-dawn' },
+  { id: 'day', label: t('Day'), icon: 'time-day' },
+  { id: 'dusk', label: t('Dusk'), icon: 'time-dusk' },
+  { id: 'night', label: t('Night'), icon: 'time-night' },
 ];
-const SEASON_STOPS: readonly SliderStop[] = [
-  { id: 'run', label: 'Running', icon: 'season-run' },
-  { id: 'spring', label: 'Spring', icon: 'season-spring' },
-  { id: 'summer', label: 'Summer', icon: 'season-summer' },
-  { id: 'autumn', label: 'Autumn', icon: 'season-autumn' },
-  { id: 'winter', label: 'Winter', icon: 'season-winter' },
-  { id: 'festival', label: 'Festival', icon: 'season-festival' },
+const seasonStops = (): readonly SliderStop[] => [
+  { id: 'run', label: t('Running'), icon: 'season-run' },
+  { id: 'spring', label: t('Spring'), icon: 'season-spring' },
+  { id: 'summer', label: t('Summer'), icon: 'season-summer' },
+  { id: 'autumn', label: t('Autumn'), icon: 'season-autumn' },
+  { id: 'winter', label: t('Winter'), icon: 'season-winter' },
+  { id: 'festival', label: t('Festival'), icon: 'season-festival' },
 ];
-const WEATHER_STOPS: readonly SliderStop[] = [
-  { id: 'auto', label: 'Auto', icon: 'weather-auto' },
-  { id: 'clear', label: 'Clear', icon: 'weather-clear' },
-  { id: 'cloudy', label: 'Cloudy', icon: 'weather-cloudy' },
-  { id: 'wind', label: 'Wind', icon: 'weather-wind' },
-  { id: 'fog', label: 'Mist', icon: 'weather-fog' },
-  { id: 'rain', label: 'Rain', icon: 'weather-rain' },
-  { id: 'storm', label: 'Storm', icon: 'weather-storm' },
-  { id: 'snow', label: 'Snow', icon: 'weather-snow' },
+const weatherStops = (): readonly SliderStop[] => [
+  { id: 'auto', label: t('Auto'), icon: 'weather-auto' },
+  { id: 'clear', label: t('Clear'), icon: 'weather-clear' },
+  { id: 'cloudy', label: t('Cloudy'), icon: 'weather-cloudy' },
+  { id: 'wind', label: t('Wind'), icon: 'weather-wind' },
+  { id: 'fog', label: t('Mist'), icon: 'weather-fog' },
+  { id: 'rain', label: t('Rain'), icon: 'weather-rain' },
+  { id: 'storm', label: t('Storm'), icon: 'weather-storm' },
+  { id: 'snow', label: t('Snow'), icon: 'weather-snow' },
 ];
+/** What the time, season and weather buttons say while one stop is held. */
+const heldTips = (): Record<string, string> => ({
+  dawn: t('Time of day: holding dawn'),
+  day: t('Time of day: holding day'),
+  dusk: t('Time of day: holding dusk'),
+  night: t('Time of day: holding night'),
+  spring: t('Season: holding spring'),
+  summer: t('Season: holding summer'),
+  autumn: t('Season: holding autumn'),
+  winter: t('Season: holding winter'),
+  festival: t('Season: holding festival'),
+  clear: t('Weather: holding clear'),
+  cloudy: t('Weather: holding cloudy'),
+  wind: t('Weather: holding wind'),
+  fog: t('Weather: holding mist'),
+  rain: t('Weather: holding rain'),
+  storm: t('Weather: holding storm'),
+  snow: t('Weather: holding snow'),
+});
+/** A grown town's kind, as the town's first name and as the note saying it grows. */
+const grownNames = (): Record<Character, readonly [name: string, growing: string]> => ({
+  harbour: [t('A harbour town'), t('A harbour town is growing.')],
+  marble: [t('A marble city'), t('A marble city is growing.')],
+  castle: [t('A castle town'), t('A castle town is growing.')],
+  market: [t('A market town'), t('A market town is growing.')],
+  river: [t('A river town'), t('A river town is growing.')],
+  farming: [t('A farming village'), t('A farming village is growing.')],
+  hill: [t('A hill town'), t('A hill town is growing.')],
+  gardens: [t('A garden town'), t('A garden town is growing.')],
+});
 /** Where along a slider's held stops a value falls: `marks` rise round a loop (the day, the year). */
 function along(value: number, marks: readonly number[]): number {
   const n = marks.length;
@@ -227,12 +260,12 @@ const LENGTH_HINT_TIMES = 3;
 const LENGTH_HINT_MS = 9000;
 /** The note over the stepper the first times a piece with a length is picked: what scrolling (or, on touch, − and +) does. */
 export function lengthHint(growth: 'up' | 'ground' | 'brush', touch: boolean): string {
-  const what = growth === 'up' ? 'taller or shorter' : growth === 'brush' ? 'wider or narrower' : 'longer or shorter';
-  const it = growth === 'brush' ? 'the brush' : 'it';
-  return touch ? `Tap − and + to make ${it} ${what}` : `Scroll to make ${it} ${what}`;
+  if (growth === 'up') return touch ? t('Tap − and + to make it taller or shorter') : t('Scroll to make it taller or shorter');
+  if (growth === 'brush') return touch ? t('Tap − and + to make the brush wider or narrower') : t('Scroll to make the brush wider or narrower');
+  return touch ? t('Tap − and + to make it longer or shorter') : t('Scroll to make it longer or shorter');
 }
 /** Told once, the first time Raise, Dig or Level is picked. */
-export const LAND_HINT = 'Drag the land to shape it. Drag the sea to turn the view.';
+export const landHint = (): string => t('Drag the land to shape it. Drag the sea to turn the view.');
 
 function readSound(): boolean {
   // On until the player turns it off (src/life/sound/volume.ts): it governs the music as well.
@@ -243,6 +276,8 @@ export function createInterface(host: InterfaceHost): Interface {
   const { view, game } = host;
   const canvas = view.canvas;
   installTheme();
+  // The core names a piece by its kind ('windmill'); the player knows it by its name on the tray ('Mill').
+  setKindNames((kind) => ((allPieceIds() as string[]).includes(kind) ? trayItem(kind as ItemId).label : kind));
 
   // ── the pieces of the interface ────────────────────────────────────────
   const root = el('div', { class: 'lc-ui', attrs: { 'data-ui': 'root' } });
@@ -286,7 +321,7 @@ export function createInterface(host: InterfaceHost): Interface {
     onHurry() {
       if (!growingNote) return; // the welcome card says so itself
       growingNote();
-      growingNote = feedback.banner('Finishing the town…', []);
+      growingNote = feedback.banner(t('Finishing the town…'), []);
     },
     onDone() {
       growingNote?.();
@@ -309,12 +344,11 @@ export function createInterface(host: InterfaceHost): Interface {
     setGhost(null, '');
     const plan = chosen ?? planTown(game.terrain, game.world.seed, { avoid });
     shown = shown.includes(plan.character) ? [plan.character] : [...shown, plan.character];
-    const name = CHARACTER_NAMES[plan.character];
-    const article = /^[aeiou]/.test(name) ? 'An' : 'A';
+    const [name, growingLine] = grownNames()[plan.character];
     // My towns: a town grown over one built by hand is a new town; the one it covers stays kept.
-    host.growing?.(`${article} ${name}`, regrow);
+    host.growing?.(name, regrow);
     growth.start(plan.edits);
-    if (growth.active && !quiet) growingNote = feedback.banner(`${article} ${name} is growing.`, [{ label: 'Finish now', primary: true, run: () => growth.skip() }]);
+    if (growth.active && !quiet) growingNote = feedback.banner(growingLine, [{ label: t('Finish now'), primary: true, run: () => growth.skip() }]);
   };
 
   /**
@@ -416,6 +450,7 @@ export function createInterface(host: InterfaceHost): Interface {
         if (found) leaveForNewIsland(found.seed);
       });
     },
+    ...(host.language ? { language: host.language } : {}),
     ...(towns ? { myTowns: () => void towns.open() } : {}),
     shareLink: () => void share(),
     postcard: () => void postcard(),
@@ -490,17 +525,18 @@ export function createInterface(host: InterfaceHost): Interface {
     },
   });
 
-  const timeButton = iconButton('time-run', 'Time of day', { class: 'lc-round', attrs: { 'data-ui': 'time', 'aria-haspopup': 'true', 'aria-expanded': 'false' } });
-  const seasonButton = iconButton('season-run', 'Season', { class: 'lc-round', attrs: { 'data-ui': 'season', 'aria-haspopup': 'true', 'aria-expanded': 'false' } });
-  const weatherButton = iconButton('weather-auto', 'Weather', { class: 'lc-round', attrs: { 'data-ui': 'weather', 'aria-haspopup': 'true', 'aria-expanded': 'false' } });
+  const timeButton = iconButton('time-run', t('Time of day'), { class: 'lc-round', attrs: { 'data-ui': 'time', 'aria-haspopup': 'true', 'aria-expanded': 'false' } });
+  const seasonButton = iconButton('season-run', t('Season'), { class: 'lc-round', attrs: { 'data-ui': 'season', 'aria-haspopup': 'true', 'aria-expanded': 'false' } });
+  const weatherButton = iconButton('weather-auto', t('Weather'), { class: 'lc-round', attrs: { 'data-ui': 'weather', 'aria-haspopup': 'true', 'aria-expanded': 'false' } });
   // ── the sliders ─────────────────────────────────────────────────────────
+  const TIME_STOPS = timeStops(), SEASON_STOPS = seasonStops(), WEATHER_STOPS = weatherStops();
   const dayMarks = (): number[] => {
     const ph = partPhases();
     return [ph.dawn.mid, ph.day.mid, ph.dusk.mid, ph.night.mid];
   };
   const timeSlider = createSlider({
     name: 'time',
-    label: 'Time of day',
+    label: t('Time of day'),
     stops: TIME_STOPS,
     position: () => (host.time.holding === 'run' ? 0 : 1 + (host.time.phase === undefined ? Math.max(0, TIME_STOPS.findIndex((s) => s.id === host.time.holding) - 1) : along(host.time.phase, dayMarks()))),
     scrub(pos) {
@@ -518,7 +554,7 @@ export function createInterface(host: InterfaceHost): Interface {
   const yearMarks = (): number[] => (['spring', 'summer', 'autumn', 'winter', 'festival'] as const).map((s) => holdYear(s));
   const seasonSlider = createSlider({
     name: 'season',
-    label: 'Season',
+    label: t('Season'),
     stops: SEASON_STOPS,
     position: () => {
       const s = host.seasons;
@@ -543,7 +579,7 @@ export function createInterface(host: InterfaceHost): Interface {
   });
   const weatherSlider = createSlider({
     name: 'weather',
-    label: 'Weather',
+    label: t('Weather'),
     stops: WEATHER_STOPS,
     position: () => Math.max(0, WEATHER_STOPS.findIndex((x) => x.id === host.seasons?.weatherHolding)),
     scrub(pos) {
@@ -564,11 +600,11 @@ export function createInterface(host: InterfaceHost): Interface {
     for (const s of sliders) if (s !== which) s.close();
     which.toggle(button);
   };
-  const undoButton = iconButton('undo', 'Undo', { class: 'lc-round', title: 'Undo (⌘Z)', attrs: { 'data-ui': 'undo' } });
-  const redoButton = iconButton('redo', 'Redo', { class: 'lc-round', title: 'Redo (⇧⌘Z)', attrs: { 'data-ui': 'redo' } });
+  const undoButton = iconButton('undo', t('Undo'), { class: 'lc-round', title: t('Undo (⌘Z)'), attrs: { 'data-ui': 'undo' } });
+  const redoButton = iconButton('redo', t('Redo'), { class: 'lc-round', title: t('Redo (⇧⌘Z)'), attrs: { 'data-ui': 'redo' } });
   // A phone starts with the least: the menu, and one button for the time, season and weather, which opens
   // to the three of them. Undo and redo come when there is something to undo or redo (ui.css, .lc-phone).
-  const skyButton = iconButton('time-run', 'Time, season and weather', { class: 'lc-round lc-sky', attrs: { 'data-ui': 'sky', 'aria-expanded': 'false' } });
+  const skyButton = iconButton('time-run', t('Time, season and weather'), { class: 'lc-round lc-sky', attrs: { 'data-ui': 'sky', 'aria-expanded': 'false' } });
   const corner = el('div', { class: 'lc-card lc-corner lc-corner-right' }, [
     ...(fly.button ? [fly.button] : []),
     timeButton,
@@ -581,7 +617,7 @@ export function createInterface(host: InterfaceHost): Interface {
     corner.classList.toggle('lc-sky-open', open);
     skyButton.setAttribute('aria-expanded', String(open));
     setIcon(skyButton, open ? 'close' : 'time-run');
-    skyButton.setAttribute('aria-label', open ? 'Close' : 'Time, season and weather');
+    skyButton.setAttribute('aria-label', open ? t('Close') : t('Time, season and weather'));
     if (!open) for (const s of sliders) s.close();
   };
   skyButton.addEventListener('click', () => openSky(!corner.classList.contains('lc-sky-open')));
@@ -613,9 +649,9 @@ export function createInterface(host: InterfaceHost): Interface {
   const keyHint = (k: string, what: string): HTMLElement => el('span', { class: 'lc-key' }, [el('kbd', { text: k }), el('span', { text: what })]);
   root.append(
     el('div', { class: 'lc-keys', attrs: { 'data-ui': 'keys', 'aria-hidden': 'true' } }, [
-      ...(fly.available ? [keyHint('F', 'fly')] : []),
-      keyHint('Esc', 'whole island'),
-      keyHint(mac ? '\u2318Z' : 'Ctrl Z', 'undo'),
+      ...(fly.available ? [keyHint('F', t('fly'))] : []),
+      keyHint('Esc', t('whole island')),
+      keyHint(mac ? '\u2318Z' : 'Ctrl Z', t('undo')),
     ]),
   );
   const slots = Math.max(...DRAWER_IDS.map((d) => drawerItems(d).length));
@@ -625,9 +661,8 @@ export function createInterface(host: InterfaceHost): Interface {
   // ── time, undo, redo ───────────────────────────────────────────────────
   const showTime = (): void => {
     const mode = host.time.holding;
-    const label = TIME_STOPS.find((x) => x.id === mode)?.label ?? 'Dawn';
     setIcon(timeButton, `time-${mode}`);
-    const title = mode === 'run' ? 'Time of day: passing' : `Time of day: holding ${label.toLowerCase()}`;
+    const title = mode === 'run' ? t('Time of day: passing') : (heldTips()[mode] ?? t('Time of day: holding dawn'));
     timeButton.title = title;
     timeButton.setAttribute('aria-label', title);
     timeButton.setAttribute('data-time', mode);
@@ -641,17 +676,17 @@ export function createInterface(host: InterfaceHost): Interface {
     if (season !== shownSeason) {
       shownSeason = season;
       setIcon(seasonButton, `season-${season}`);
-      const t = season === 'run' ? 'Season: the year is turning' : `Season: holding ${SEASON_STOPS.find((x) => x.id === season)!.label.toLowerCase()}`;
-      seasonButton.title = t;
-      seasonButton.setAttribute('aria-label', t);
+      const tip = season === 'run' ? t('Season: the year is turning') : heldTips()[season]!;
+      seasonButton.title = tip;
+      seasonButton.setAttribute('aria-label', tip);
       seasonButton.setAttribute('data-season', season);
     }
     if (weather !== shownWeather) {
       shownWeather = weather;
       setIcon(weatherButton, `weather-${weather}`);
-      const t = weather === 'auto' ? 'Weather: comes and goes' : `Weather: holding ${WEATHER_STOPS.find((x) => x.id === weather)!.label.toLowerCase()}`;
-      weatherButton.title = t;
-      weatherButton.setAttribute('aria-label', t);
+      const tip = weather === 'auto' ? t('Weather: comes and goes') : heldTips()[weather]!;
+      weatherButton.title = tip;
+      weatherButton.setAttribute('aria-label', tip);
       weatherButton.setAttribute('data-weather', weather);
     }
   };
@@ -751,7 +786,7 @@ export function createInterface(host: InterfaceHost): Interface {
     count.toggleAttribute('hidden', !hoverAt || n === 0);
     if (!hoverAt || n === 0) return;
     const length = heldLength();
-    count.textContent = n < (length ?? 0) ? `${n} of ${length}` : String(n);
+    count.textContent = n < (length ?? 0) ? t('{got} of {all}', { got: n, all: length! }) : String(n);
     const r = canvas.getBoundingClientRect();
     count.style.transform = `translate(${Math.round(hoverAt.x + r.left + 16)}px, ${Math.round(hoverAt.y + r.top + 14)}px)`;
   };
@@ -1275,13 +1310,13 @@ export function createInterface(host: InterfaceHost): Interface {
     if (link === null) {
       track('town_shared', { via: 'file' });
       downloadTown(game.world);
-      feedback.toast('This town is too big for a link, so here it is as a file.');
+      feedback.toast(t('This town is too big for a link, so here it is as a file.'));
     } else if (await copyText(link)) {
       track('town_shared', { via: 'link' });
-      feedback.toast('Link copied. Anyone who opens it gets a copy of this town.');
+      feedback.toast(t('Link copied. Anyone who opens it gets a copy of this town.'));
     } else {
       track('town_shared', { via: 'link_box' });
-      feedback.linkBox('Copy this link to share your town:', link);
+      feedback.linkBox(t('Copy this link to share your town:'), link);
     }
   };
   const postcard = async (): Promise<void> => {
@@ -1289,7 +1324,7 @@ export function createInterface(host: InterfaceHost): Interface {
     if (blob) {
       track('postcard_saved');
       download(blob, 'little-city-postcard.png');
-    } else feedback.toast('The postcard could not be made.');
+    } else feedback.toast(t('The postcard could not be made.'));
   };
   const openFile = async (file: File): Promise<void> => {
     const result = await readTownFile(file);
@@ -1326,11 +1361,11 @@ export function createInterface(host: InterfaceHost): Interface {
     }
     if (state.idle && !toldIdle) {
       toldIdle = true;
-      feedback.toast('Nothing in hand: just look around. Pick a piece to build again.');
+      feedback.toast(t('Nothing in hand: just look around. Pick a piece to build again.'));
     }
     if (!state.idle && isLandTool(tray.state.item) && !landHintShown) {
       landHintShown = true;
-      feedback.toast(LAND_HINT);
+      feedback.toast(landHint());
       try {
         localStorage.setItem(LAND_HINT_KEY, 'seen');
       } catch {

@@ -18,6 +18,7 @@
 // (`worth`): an island with only its starting trees is not a town yet.
 
 import type { World } from '@/core/world';
+import { say, t } from '@/i18n';
 import { decodeTown, encodeTown, SAVE_KEY, type TownStorage } from '@/world/save';
 import type { TownEntry, TownLibrary } from './library';
 
@@ -73,6 +74,13 @@ const randomId = (): string => {
   }
 };
 
+/** The player's language's "Town {n}" as a pattern that reads the number back. */
+function townNumbered(): RegExp {
+  const [before, after] = t('Town {n}', { n: '\u0000' }).split('\u0000');
+  const esc = (x = ''): string => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${esc(before)}(\\d+)${esc(after)}$`);
+}
+
 export function createKeeper(opts: KeeperOptions): Keeper {
   const now = opts.now ?? Date.now;
   const newId = opts.newId ?? randomId;
@@ -107,14 +115,17 @@ export function createKeeper(opts: KeeperOptions): Keeper {
     }
   };
 
-  /** "Town 4": one past the highest such number, and past the count. */
+  /** "Town 4" (in the player's language): one past the highest such number, in English or theirs, and past the count. */
   const nextName = (): string => {
     let n = cache.size;
+    const named = [/^Town (\d+)$/, townNumbered()];
     for (const e of cache.values()) {
-      const m = /^Town (\d+)$/.exec(e.name);
-      if (m) n = Math.max(n, Number(m[1]));
+      for (const re of named) {
+        const m = re.exec(e.name);
+        if (m) n = Math.max(n, Number(m[1]));
+      }
     }
-    return `Town ${n + 1}`;
+    return t('Town {n}', { n: String(n + 1) });
   };
 
   // ── what was saved last visit: filed before anything can write over it ──
@@ -245,9 +256,9 @@ export function createKeeper(opts: KeeperOptions): Keeper {
     },
     open(id) {
       const entry = cache.get(id);
-      if (!entry) return { ok: false, reason: 'That town is not here any more.' };
+      if (!entry) return { ok: false, reason: t('That town is not here any more.') };
       const result = decodeTown(entry.code);
-      if (!result.ok) return { ok: false, reason: `${result.reason} It is kept here; a newer Little City may open it.` };
+      if (!result.ok) return { ok: false, reason: t('{reason} It is kept here; a newer Little City may open it.', { reason: say(result.reason) }) };
       api.current = id;
       pendingName = null;
       writeSaved(entry.code, id);

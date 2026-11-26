@@ -5,6 +5,7 @@
 // only the browser side of it.
 
 import type { World } from '@/core/world';
+import { t } from '@/i18n';
 import { PALETTE } from '@/style/palette';
 import { decodeTown, encodeTown, type DecodeResult } from '@/world/save';
 
@@ -46,7 +47,7 @@ export async function readTownFile(file: File): Promise<DecodeResult> {
   try {
     return decodeTown((await file.text()).trim());
   } catch {
-    return { ok: false, reason: 'That file could not be read.' };
+    return { ok: false, reason: t('That file could not be read.') };
   }
 }
 

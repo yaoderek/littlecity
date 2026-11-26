@@ -26,6 +26,7 @@ import { changeSpeed, clearAt, startFlight, stepFlight, type FlightState } from 
 import { along, clearPath, planPath, type Vec3 } from '@/fly/glide';
 import { addLook, applyLook, newLook } from '@/fly/look';
 import { createSolidMap, type SolidMap } from '@/fly/solid';
+import { t } from '@/i18n';
 import { el, iconButton, isCoarsePointer } from './dom';
 
 /** The flying eye's vertical field of view, degrees. */
@@ -98,6 +99,14 @@ const DEG = Math.PI / 180;
 /** A field of view between two, eased so the picture's scale changes evenly (by the tangent). */
 const fovBetween = (a: number, b: number, t: number): number => (2 * Math.atan(lerp(Math.tan((a * DEG) / 2), Math.tan((b * DEG) / 2), t))) / DEG;
 
+/** What the fly button and layer say (out here: inside createFly, `t` is the way in or out). */
+const words = (): { fly: string; land: string; keys: string } => ({
+  fly: t('Fly (F)'),
+  land: t('Esc to land'),
+  keys: t('W A S D fly · Space up · Shift down · wheel for speed'),
+});
+const speedWords = (speed: string): string => t('Speed ×{speed}', { speed });
+
 /** Keys that fly (KeyboardEvent.code). */
 const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'ShiftLeft', 'ShiftRight']);
 
@@ -125,11 +134,12 @@ export function createFly(host: FlyHost): FlyMode {
   let held: number | null = null;
 
   // ── the DOM ────────────────────────────────────────────────────────────
-  const button = available ? iconButton('wings', 'Fly (F)', { class: 'lc-round', attrs: { 'data-ui': 'fly' } }) : null;
+  const said = words();
+  const button = available ? iconButton('wings', said.fly, { class: 'lc-round', attrs: { 'data-ui': 'fly' } }) : null;
   const speedNote = el('span', { class: 'lc-fly-speed', attrs: { 'data-ui': 'fly-speed', hidden: '' } });
   const hint = el('div', { class: 'lc-card lc-fly-hint', attrs: { 'data-ui': 'fly-hint' } }, [
-    el('b', { text: 'Esc to land' }),
-    el('span', { text: 'W A S D fly · Space up · Shift down · wheel for speed' }),
+    el('b', { text: said.land }),
+    el('span', { text: said.keys }),
     speedNote,
   ]);
   const layer = el('div', { class: 'lc-fly', attrs: { 'data-ui': 'fly-layer', hidden: '' } }, [hint]);
@@ -229,7 +239,7 @@ export function createFly(host: FlyHost): FlyMode {
       if (!flight) return;
       const notches = e.deltaMode === 0 ? -e.deltaY / 100 : -e.deltaY;
       changeSpeed(flight, Math.max(-3, Math.min(3, notches)));
-      speedNote.textContent = `Speed ×${flight.scale < 1 ? flight.scale.toFixed(2) : flight.scale.toFixed(1)}`;
+      speedNote.textContent = speedWords(flight.scale < 1 ? flight.scale.toFixed(2) : flight.scale.toFixed(1));
       speedNote.hidden = false;
       speedShownAt = performance.now();
     },

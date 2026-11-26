@@ -6,6 +6,7 @@ import { cellFloorCenter, CELL_H, type CellKey } from '@/core/grid';
 import { compose, rotationZ, translation } from '@/core/mat4';
 import type { LifeStage } from '@/life/api';
 import type { StructureId } from '@/resolve/plan';
+import { say, t } from '@/i18n';
 import { el } from './dom';
 
 export interface Feedback {
@@ -28,7 +29,8 @@ export function createFeedback(layer: HTMLElement): Feedback {
 
   return {
     el: toasts,
-    toast(text) {
+    toast(line) {
+      const text = say(line);
       if (lastToast?.isConnected && lastToast.textContent === text) lastToast.remove();
       const node = el('div', { class: 'lc-card lc-toast', text, attrs: { 'data-ui': 'toast' } });
       node.addEventListener('animationend', () => node.remove());
@@ -36,7 +38,7 @@ export function createFeedback(layer: HTMLElement): Feedback {
       toasts.append(node);
     },
     banner(text, buttons) {
-      const node = el('div', { class: 'lc-card lc-banner', attrs: { 'data-ui': 'banner' } }, [el('span', { text })]);
+      const node = el('div', { class: 'lc-card lc-banner', attrs: { 'data-ui': 'banner' } }, [el('span', { text: say(text) })]);
       const close = (): void => node.remove();
       for (const b of buttons) {
         node.append(
@@ -57,18 +59,18 @@ export function createFeedback(layer: HTMLElement): Feedback {
       return close;
     },
     linkBox(text, link) {
-      const input = el('input', { attrs: { type: 'text', readonly: '', value: link, 'aria-label': 'Link' } });
+      const input = el('input', { attrs: { type: 'text', readonly: '', value: link, 'aria-label': t('Link') } });
       const node = el('div', { class: 'lc-card lc-link-box', attrs: { 'data-ui': 'link-box' } }, [
         el('span', { text }),
         input,
-        el('button', { class: 'lc-text-btn', text: 'Done', attrs: { type: 'button' }, on: { click: () => node.remove() } }),
+        el('button', { class: 'lc-text-btn', text: t('Done'), attrs: { type: 'button' }, on: { click: () => node.remove() } }),
       ]);
       toasts.append(node);
       input.focus();
       input.select();
     },
     refuse(reason, x, y) {
-      const node = el('div', { class: 'lc-puff', text: sentence(reason), attrs: { 'data-ui': 'refusal' } });
+      const node = el('div', { class: 'lc-puff', text: sentence(say(reason)), attrs: { 'data-ui': 'refusal' } });
       layer.append(node);
       // Keep it on the screen: centred over the point, clamped to the edges.
       const w = node.offsetWidth, h = node.offsetHeight;

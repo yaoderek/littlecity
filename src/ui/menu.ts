@@ -11,6 +11,7 @@
 // put aside until it is done; closing the menu or Back calls it off.
 // Owner: Interface.
 
+import { LANG_NAMES, LANGS, t, type Lang } from '@/i18n';
 import { ISLAND_KIND_NAMES, ISLAND_KINDS, type IslandKind } from '@/terrain/kinds';
 import { CHARACTER_NAMES, CHARACTERS, type Character } from '@/townmaker/character';
 import { el, iconButton, setIcon } from './dom';
@@ -59,6 +60,8 @@ export interface MenuActions {
   /** The raid (src/life/raid): raiders come on their own now and then. Left out of the menu when absent. */
   raiders?(): boolean;
   setRaiders?(on: boolean): void;
+  /** The language the game speaks: the one in use, and the player's choice of another. Left out of the menu when absent. */
+  language?: { current(): Lang; choose(lang: Lang): void };
 }
 
 export interface Menu {
@@ -77,20 +80,20 @@ export interface Menu {
 const capital = (s: string): string => s[0]!.toUpperCase() + s.slice(1);
 
 /** Why a kind of town cannot be grown on the island there is (shown on hover over its greyed row, or when it is pressed). */
-export const WHY_NOT_HERE: Record<Character, string> = {
-  harbour: 'This island has no coast for a harbour.',
-  marble: 'This island has no room for a forum.',
-  castle: 'This island has no room for a castle.',
-  market: 'This island has no room for a market.',
-  river: 'This island has no river long enough.',
-  farming: 'This island has no room for farms.',
-  hill: 'This island has no high ground.',
-  gardens: 'This island has no room for gardens.',
-};
+export const whyNotHere = (): Record<Character, string> => ({
+  harbour: t('This island has no coast for a harbour.'),
+  marble: t('This island has no room for a forum.'),
+  castle: t('This island has no room for a castle.'),
+  market: t('This island has no room for a market.'),
+  river: t('This island has no river long enough.'),
+  farming: t('This island has no room for farms.'),
+  hill: t('This island has no high ground.'),
+  gardens: t('This island has no room for gardens.'),
+});
 
 export function createMenu(actions: MenuActions): Menu {
   const panel = el('div', { class: 'lc-pop lc-menu', attrs: { role: 'menu', hidden: '', 'data-ui': 'menu' } });
-  const button = iconButton('menu', 'Menu', {
+  const button = iconButton('menu', t('Menu'), {
     class: 'lc-round',
     attrs: { 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'data-ui': 'menu-button' },
   });
@@ -155,7 +158,7 @@ export function createMenu(actions: MenuActions): Menu {
     el('div', { class: 'lc-confirm-buttons' }, [
       el('button', {
         class: 'lc-text-btn',
-        text: 'Back',
+        text: t('Back'),
         attrs: { type: 'button', 'data-menu': id },
         on: {
           click: () => {
@@ -171,12 +174,12 @@ export function createMenu(actions: MenuActions): Menu {
    * in My towns where there is My towns, and gone where there is not.
    */
   const leaving = (): HTMLElement | null =>
-    actions.hasTown() ? el('small', { text: actions.myTowns ? 'The town you have now stays in My towns.' : 'The town you have now will be gone.' }) : null;
+    actions.hasTown() ? el('small', { text: actions.myTowns ? t('The town you have now stays in My towns.') : t('The town you have now will be gone.') }) : null;
 
   /** A volume row: an icon, a name and a slider 0–100. Not a menu item: the menu stays open while it is dragged. */
   const volume = (id: string, iconId: string, label: string, value: number, set: (v: number) => void): HTMLElement => {
     const range = el('input', {
-      attrs: { type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(value * 100)), 'aria-label': `${label} volume`, 'data-ui': `volume-${id}` },
+      attrs: { type: 'range', min: '0', max: '100', step: '5', value: String(Math.round(value * 100)), 'aria-label': id === 'music' ? t('Music volume') : t('Sounds volume'), 'data-ui': `volume-${id}` },
     });
     range.addEventListener('input', () => set(Number(range.value) / 100));
     return el('label', { class: 'lc-menu-volume' }, [el('span', { class: 'lc-btn-icon', html: icon(iconId) }), el('span', { class: 'lc-menu-volume-label', text: label }), range]);
@@ -185,8 +188,8 @@ export function createMenu(actions: MenuActions): Menu {
   const showItems = (): void => {
     const showSound = (on: boolean): void => {
       setIcon(sound, on ? 'sound-on' : 'sound-off');
-      sound.querySelector('.lc-btn-label')!.textContent = on ? 'Sound: on' : 'Sound: off';
-      sound.setAttribute('aria-label', on ? 'Sound: on' : 'Sound: off');
+      sound.querySelector('.lc-btn-label')!.textContent = on ? t('Sound: on') : t('Sound: off');
+      sound.setAttribute('aria-label', on ? t('Sound: on') : t('Sound: off'));
       sounds?.classList.toggle('lc-menu-volume-off', !on);
       music?.classList.toggle('lc-menu-volume-off', !on);
     };
@@ -194,7 +197,7 @@ export function createMenu(actions: MenuActions): Menu {
     const sound = item(
       'sound',
       soundOn ? 'sound-on' : 'sound-off',
-      soundOn ? 'Sound: on' : 'Sound: off',
+      soundOn ? t('Sound: on') : t('Sound: off'),
       () => {
         const next = !actions.sound();
         actions.setSound(next);
@@ -205,7 +208,7 @@ export function createMenu(actions: MenuActions): Menu {
     // Moving either slider up turns sound on: nobody sets a level for something that is off.
     const music =
       actions.musicVolume && actions.setMusicVolume
-        ? volume('music', 'music', 'Music', actions.musicVolume(), (v) => {
+        ? volume('music', 'music', t('Music'), actions.musicVolume(), (v) => {
             actions.setMusicVolume!(v);
             if (v > 0 && !actions.sound()) {
               actions.setSound(true);
@@ -215,7 +218,7 @@ export function createMenu(actions: MenuActions): Menu {
         : null;
     const sounds =
       actions.soundVolume && actions.setSoundVolume
-        ? volume('sound', 'volume', 'Sounds', actions.soundVolume(), (v) => {
+        ? volume('sound', 'volume', t('Sounds'), actions.soundVolume(), (v) => {
             actions.setSoundVolume!(v);
             if (v > 0 && !actions.sound()) {
               actions.setSound(true);
@@ -225,7 +228,7 @@ export function createMenu(actions: MenuActions): Menu {
         : null;
     sounds?.classList.toggle('lc-menu-volume-off', !soundOn);
     music?.classList.toggle('lc-menu-volume-off', !soundOn);
-    const label = (on: boolean): string => (on ? 'Rebuild: on' : 'Rebuild: off');
+    const label = (on: boolean): string => (on ? t('Rebuild: on') : t('Rebuild: off'));
     const rebuild =
       actions.rebuild && actions.setRebuild
         ? item(
@@ -241,7 +244,7 @@ export function createMenu(actions: MenuActions): Menu {
             true,
           )
         : null;
-    const raidLabel = (on: boolean): string => (on ? 'Raiders: on' : 'Raiders: off');
+    const raidLabel = (on: boolean): string => (on ? t('Raiders: on') : t('Raiders: off'));
     const raiders =
       actions.raiders && actions.setRaiders
         ? item(
@@ -257,7 +260,7 @@ export function createMenu(actions: MenuActions): Menu {
             true,
           )
         : null;
-    const statsLabel = (on: boolean): string => (on ? 'Town stats: on' : 'Town stats: off');
+    const statsLabel = (on: boolean): string => (on ? t('Town stats: on') : t('Town stats: off'));
     const stats =
       actions.stats && actions.setStats
         ? item(
@@ -274,16 +277,16 @@ export function createMenu(actions: MenuActions): Menu {
           )
         : null;
     panel.replaceChildren(
-      ...(actions.guide && actions.showGuide?.() ? [item('guide', 'guide', 'Guide to special buildings', actions.guide)] : []),
-      item('grow', 'grow', 'Grow a town', showGrow, true),
+      ...(actions.guide && actions.showGuide?.() ? [item('guide', 'guide', t('Guide to special buildings'), actions.guide)] : []),
+      item('grow', 'grow', t('Grow a town'), showGrow, true),
       el('div', { class: 'lc-menu-rule' }),
-      ...(actions.myTowns ? [item('towns', 'towns', 'My towns', actions.myTowns)] : []),
-      item('new', 'island', 'New island', showIslandKinds, true),
-      item('share', 'share', 'Share link', actions.shareLink),
-      item('postcard', 'postcard', 'Postcard', actions.postcard),
+      ...(actions.myTowns ? [item('towns', 'towns', t('My towns'), actions.myTowns)] : []),
+      item('new', 'island', t('New island'), showIslandKinds, true),
+      item('share', 'share', t('Share link'), actions.shareLink),
+      item('postcard', 'postcard', t('Postcard'), actions.postcard),
       el('div', { class: 'lc-menu-rule' }),
-      item('download', 'download', 'Save town to a file', actions.downloadTown),
-      item('open', 'open', 'Open a town file', () => file.click()),
+      item('download', 'download', t('Save town to a file'), actions.downloadTown),
+      item('open', 'open', t('Open a town file'), () => file.click()),
       el('div', { class: 'lc-menu-rule' }),
       ...(music ? [music] : []),
       sound,
@@ -291,6 +294,7 @@ export function createMenu(actions: MenuActions): Menu {
       ...(rebuild ? [rebuild] : []),
       ...(raiders ? [raiders] : []),
       ...(stats ? [stats] : []),
+      ...(actions.language ? [el('div', { class: 'lc-menu-rule' }), item('language', 'language', t('Language'), showLanguages, true)] : []),
     );
   };
 
@@ -300,9 +304,9 @@ export function createMenu(actions: MenuActions): Menu {
     actions.townKindsHere(() => {});
     panel.replaceChildren(
       el('div', { class: 'lc-confirm lc-choice', attrs: { 'data-ui': 'grow-choice' } }, [
-        el('p', { text: 'Grow a town' }),
-        item('grow-here', 'grow', 'On this island', () => showTownKinds('here'), true),
-        item('grow-new', 'island', 'On a new island', () => showTownKinds('new'), true),
+        el('p', { text: t('Grow a town') }),
+        item('grow-here', 'grow', t('On this island'), () => showTownKinds('here'), true),
+        item('grow-new', 'island', t('On a new island'), () => showTownKinds('new'), true),
         back('grow-back', showItems),
       ]),
     );
@@ -325,11 +329,11 @@ export function createMenu(actions: MenuActions): Menu {
       if (ok === null) row.setAttribute('aria-busy', 'true');
       else row.removeAttribute('aria-busy');
       row.dataset.can = ok === null ? 'checking' : String(ok);
-      row.title = ok === false ? WHY_NOT_HERE[kind] : '';
+      row.title = ok === false ? whyNotHere()[kind] : '';
     };
     const grow = (kind: Character | null) => (signal: AbortSignal) => (where === 'here' ? actions.growTown(kind, signal) : actions.growNewIsland(kind, signal));
     for (const kind of CHARACTERS) {
-      const row = kindItem(`town-${kind}`, `town-${kind}`, capital(CHARACTER_NAMES[kind]), grow(kind));
+      const row = kindItem(`town-${kind}`, `town-${kind}`, t(capital(CHARACTER_NAMES[kind])), grow(kind));
       // A kind this island cannot grow: pressing it says why, and grows nothing.
       row.addEventListener(
         'click',
@@ -337,17 +341,17 @@ export function createMenu(actions: MenuActions): Menu {
           if (row.dataset.can !== 'false') return;
           e.stopImmediatePropagation();
           e.preventDefault();
-          why.textContent = WHY_NOT_HERE[kind];
+          why.textContent = whyNotHere()[kind];
           why.removeAttribute('hidden');
         },
         true,
       );
       rows.set(kind, row);
     }
-    const any = kindItem('town-any', 'dice', 'Surprise me', grow(null));
+    const any = kindItem('town-any', 'dice', t('Surprise me'), grow(null));
     any.classList.add('lc-kind-any');
     const screen = el('div', { class: 'lc-confirm lc-choice lc-kinds lc-kinds-wide', attrs: { 'data-ui': 'town-kinds', 'data-where': where } }, [
-      el('p', { text: 'What kind of town?' }),
+      el('p', { text: t('What kind of town?') }),
       where === 'new' ? leaving() : null,
       el('div', { class: 'lc-kind-grid' }, [any, ...rows.values()]),
       why,
@@ -366,11 +370,31 @@ export function createMenu(actions: MenuActions): Menu {
   const showIslandKinds = (): void => {
     panel.replaceChildren(
       el('div', { class: 'lc-confirm lc-choice lc-kinds', attrs: { 'data-ui': 'confirm' } }, [
-        el('p', { text: 'What kind of island?' }),
+        el('p', { text: t('What kind of island?') }),
         leaving(),
-        kindItem('new-yes', 'dice', 'Surprise me', (signal) => actions.newIsland(null, signal)),
-        ...ISLAND_KINDS.map((kind) => kindItem(`island-${kind}`, `isle-${kind}`, ISLAND_KIND_NAMES[kind], (signal) => actions.newIsland(kind, signal))),
+        kindItem('new-yes', 'dice', t('Surprise me'), (signal) => actions.newIsland(null, signal)),
+        ...ISLAND_KINDS.map((kind) => kindItem(`island-${kind}`, `isle-${kind}`, t(ISLAND_KIND_NAMES[kind]), (signal) => actions.newIsland(kind, signal))),
         back('new-back', showItems),
+      ]),
+    );
+  };
+
+  /** Language, second screen: each language in its own name, the one in use marked. Choosing another saves the town and reloads. */
+  const showLanguages = (): void => {
+    const language = actions.language!;
+    const now = language.current();
+    panel.replaceChildren(
+      el('div', { class: 'lc-confirm lc-choice', attrs: { 'data-ui': 'languages' } }, [
+        el('p', { text: t('Language') }),
+        ...LANGS.map((lang) => {
+          const row = item(`lang-${lang}`, lang === now ? 'tick' : 'language', LANG_NAMES[lang], () => {
+            if (lang !== now) language.choose(lang);
+          });
+          row.setAttribute('lang', lang === 'zh' ? 'zh-Hans' : lang);
+          if (lang === now) row.setAttribute('aria-current', 'true');
+          return row;
+        }),
+        back('language-back', showItems),
       ]),
     );
   };

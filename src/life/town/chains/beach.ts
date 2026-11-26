@@ -43,6 +43,7 @@
 // Cost per step: a few comparisons per bather, a matrix per swimmer and per
 // flying ball; the things are a few instances per pitch, placed once.
 
+import { phrase } from '@/core/phrase';
 import { CELL_H, DIR4, keyX, keyZ, SEA_Y, type CellKey } from '@/core/grid';
 import { rand } from '@/core/rand';
 import { compose, rotationY, translation } from '@/core/mat4';
@@ -419,7 +420,7 @@ export function beachChain(): BeachChain {
     };
     day.scene = scenesOf(board).begin({
       kind: 'beach',
-      title: 'A beach day on the shore',
+      title: phrase('A beach day on the shore'),
       big: true,
       focus,
       noteworthy: () => day.pitches.filter((pi) => pi.things.some((t) => t.kind === 'parasol')).length >= Math.min(2, day.pitches.length),

@@ -8,6 +8,7 @@
 // it goes by itself when its scene is over.
 
 import { scenesOnStage, type Scene } from '@/life/town/scenes';
+import { t } from '@/i18n';
 import { SCENES } from '@/style/scenes';
 import type { Interface } from '@/ui/interface';
 
@@ -55,7 +56,7 @@ export function sceneNote(ui: Interface, now: () => number = () => performance.n
         showing = s;
         close = ui.feedback.banner(s.title, [
           {
-            label: 'Watch',
+            label: t('Watch'),
             primary: true,
             run: () => {
               close = null;
@@ -64,7 +65,7 @@ export function sceneNote(ui: Interface, now: () => number = () => performance.n
               if (f) ui.glideTo([f.x, f.y + 0.3, f.z], 5);
             },
           },
-          { label: 'Not now', run: () => void ((close = null), (showing = null)) },
+          { label: t('Not now'), run: () => void ((close = null), (showing = null)) },
         ]);
         break;
       }

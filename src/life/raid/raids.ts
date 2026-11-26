@@ -10,6 +10,7 @@
 //
 // One raid at a time.
 
+import { phrase } from '@/core/phrase';
 import type { LifeStage } from '../api';
 import type { Board } from '../town/board';
 import type { DressingPlan, ShapePlan } from '@/resolve/plan';
@@ -65,8 +66,8 @@ export function raidsOf(stage: LifeStage | object): Raids {
       board: null,
       start: null,
       summon(s) {
-        if (raids.current) return 'raiders are already here';
-        if (!raids.start) return 'the town is not ready yet';
+        if (raids.current) return phrase('raiders are already here');
+        if (!raids.start) return phrase('the town is not ready yet');
         return raids.start(s);
       },
       end() {

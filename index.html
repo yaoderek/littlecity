@@ -86,6 +86,30 @@
       <p class="lc-loading-line">Drawing your town…</p>
     </div>
     <script>
+      // The loading line in the player's language, before the game's code arrives. Picks the language the
+      // way src/i18n pickLang() does (?lang=, the menu's choice, the browser's languages); keep the two in step.
+      var lcWords = (function () {
+        var words = {
+          zh: ['正在画你的小镇…', '这个浏览器画不出小镇。请刷新页面，或者换个浏览器试试。'],
+          es: ['Dibujando tu pueblo…', 'Este navegador no pudo dibujar el pueblo. Prueba a recargar, o usa otro navegador.'],
+          fr: ['On dessine ta ville…', 'Ce navigateur n’a pas pu dessiner la ville. Recharge la page, ou essaie un autre navigateur.'],
+          pt: ['Desenhando sua cidade…', 'Este navegador não conseguiu desenhar a cidade. Tente recarregar ou use outro navegador.'],
+          ja: ['町をかいています…', 'このブラウザでは町をかけませんでした。再読み込みするか、別のブラウザで試してください。'],
+          ko: ['마을을 그리는 중…', '이 브라우저에서는 마을을 그릴 수 없어요. 새로고침하거나 다른 브라우저로 열어 보세요.'],
+        };
+        var tags = [];
+        try { tags.push(new URLSearchParams(location.search).get('lang') || '', localStorage.getItem('little-city.lang') || ''); } catch (e) {}
+        tags = tags.concat(navigator.languages || [navigator.language || '']);
+        for (var i = 0; i < tags.length; i++) {
+          var base = String(tags[i]).toLowerCase().split(/[-_]/)[0];
+          if (base === 'en') return null;
+          if (words[base]) return words[base];
+        }
+        return null;
+      })();
+      if (lcWords) document.querySelector('.lc-loading-line').textContent = lcWords[0];
+    </script>
+    <script>
       // A start that fails says so. Only while the loader is still waiting; a later error leaves the town alone.
       function lcFailed(e) {
         // A script that never arrived fires on its element; a runtime error fires on window and must be ours.
@@ -95,7 +119,7 @@
         var l = document.querySelector('.lc-loading');
         if (!l || l.getAttribute('data-state') !== 'loading') return;
         l.setAttribute('data-state', 'failed');
-        l.querySelector('.lc-loading-line').textContent = "This browser couldn't draw the town. Try reloading, or another browser.";
+        l.querySelector('.lc-loading-line').textContent = window.lcWords ? lcWords[1] : "This browser couldn't draw the town. Try reloading, or another browser.";
       }
       window.addEventListener('error', lcFailed, true);
     </script>

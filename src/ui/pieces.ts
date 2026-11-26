@@ -8,6 +8,7 @@
 // either it lands in the Build drawer with a plain box icon.
 
 import { ALL_KINDS, FLOOR_KINDS, type EdgeKind, type FloorKind, type PlacedKind } from '@/core/kinds';
+import { t } from '@/i18n';
 
 export type PieceId = PlacedKind | FloorKind;
 /** Mischief (design section 13b): tools that wreck and mend, in their own drawer. */
@@ -32,49 +33,49 @@ export interface TrayItem {
   group?: 'land';
 }
 
-const PIECE_INFO: Partial<Record<PieceId, { label: string; hint: string; drawer: DrawerId; order: number }>> = {
-  auto: { label: 'Auto', hint: 'Decides for itself what to be', drawer: 'build', order: 0 },
-  house: { label: 'House', hint: 'House', drawer: 'build', order: 1 },
-  tower: { label: 'Tower', hint: 'Tower', drawer: 'build', order: 2 },
-  lighthouse: { label: 'Light', hint: 'Lighthouse', drawer: 'build', order: 3 },
-  arch: { label: 'Arch', hint: 'Arch or bridge', drawer: 'build', order: 4 },
-  dock: { label: 'Dock', hint: 'Dock, on the water', drawer: 'build', order: 5 },
-  marble: { label: 'Marble', hint: 'Marble block', drawer: 'build', order: 6 },
-  pillar: { label: 'Pillar', hint: 'Pillar', drawer: 'build', order: 7 },
-  stairs: { label: 'Stairs', hint: 'Stairs', drawer: 'build', order: 8 },
-  windmill: { label: 'Mill', hint: 'Windmill', drawer: 'build', order: 9 },
-  path: { label: 'Path', hint: 'Path', drawer: 'ground', order: 0 },
-  plaza: { label: 'Plaza', hint: 'Plaza', drawer: 'ground', order: 1 },
-  field: { label: 'Field', hint: 'Playing field: its shape makes the court, and people come to play', drawer: 'ground', order: 1.5 },
-  fence: { label: 'Fence', hint: 'Fence: the middle of a square, or along its edge', drawer: 'ground', order: 2 },
-  wall: { label: 'Wall', hint: 'Low wall: the middle of a square, or along its edge', drawer: 'ground', order: 3 },
-  stall: { label: 'Stall', hint: 'Market stall', drawer: 'ground', order: 4 },
-  tree: { label: 'Tree', hint: 'Tree', drawer: 'nature', order: 0 },
-  garden: { label: 'Garden', hint: 'Garden', drawer: 'nature', order: 1 },
-  fountain: { label: 'Fountain', hint: 'Fountain', drawer: 'nature', order: 2 },
-};
+const pieceInfo = (): Partial<Record<PieceId, { label: string; hint: string; drawer: DrawerId; order: number }>> => ({
+  auto: { label: t('Auto'), hint: t('Decides for itself what to be'), drawer: 'build', order: 0 },
+  house: { label: t('House'), hint: t('House'), drawer: 'build', order: 1 },
+  tower: { label: t('Tower'), hint: t('Tower'), drawer: 'build', order: 2 },
+  lighthouse: { label: t('Light'), hint: t('Lighthouse'), drawer: 'build', order: 3 },
+  arch: { label: t('Arch'), hint: t('Arch or bridge'), drawer: 'build', order: 4 },
+  dock: { label: t('Dock'), hint: t('Dock, on the water'), drawer: 'build', order: 5 },
+  marble: { label: t('Marble'), hint: t('Marble block'), drawer: 'build', order: 6 },
+  pillar: { label: t('Pillar'), hint: t('Pillar'), drawer: 'build', order: 7 },
+  stairs: { label: t('Stairs'), hint: t('Stairs'), drawer: 'build', order: 8 },
+  windmill: { label: t('Mill'), hint: t('Windmill'), drawer: 'build', order: 9 },
+  path: { label: t('Path'), hint: t('Path'), drawer: 'ground', order: 0 },
+  plaza: { label: t('Plaza'), hint: t('Plaza'), drawer: 'ground', order: 1 },
+  field: { label: t('Field'), hint: t('Playing field: its shape makes the court, and people come to play'), drawer: 'ground', order: 1.5 },
+  fence: { label: t('Fence'), hint: t('Fence: the middle of a square, or along its edge'), drawer: 'ground', order: 2 },
+  wall: { label: t('Wall'), hint: t('Low wall: the middle of a square, or along its edge'), drawer: 'ground', order: 3 },
+  stall: { label: t('Stall'), hint: t('Market stall'), drawer: 'ground', order: 4 },
+  tree: { label: t('Tree'), hint: t('Tree'), drawer: 'nature', order: 0 },
+  garden: { label: t('Garden'), hint: t('Garden'), drawer: 'nature', order: 1 },
+  fountain: { label: t('Fountain'), hint: t('Fountain'), drawer: 'nature', order: 2 },
+});
 
-const LAND_INFO: Record<LandId, { label: string; hint: string }> = {
-  raise: { label: 'Raise', hint: 'Raise the ground a level (Shift-drag to paint; scroll for a wider brush)' },
-  dig: { label: 'Dig', hint: 'Dig the ground down a level; at the bottom it fills with water' },
-  level: { label: 'Level', hint: 'Bring the ground to one height: click, or Shift-drag from the height you want' },
-};
+const landInfo = (): Record<LandId, { label: string; hint: string }> => ({
+  raise: { label: t('Raise'), hint: t('Raise the ground a level (Shift-drag to paint; scroll for a wider brush)') },
+  dig: { label: t('Dig'), hint: t('Dig the ground down a level; at the bottom it fills with water') },
+  level: { label: t('Level'), hint: t('Bring the ground to one height: click, or Shift-drag from the height you want') },
+});
 
-const TOOL_INFO: Record<ToolId, { label: string; hint: string }> = {
-  change: { label: 'Change', hint: 'Change what a block is, or turn stairs' },
-  paint: { label: 'Paint', hint: 'Recolour a block' },
-  erase: { label: 'Erase', hint: 'Remove a piece' },
-  torch: { label: 'Lightning', hint: 'Strike a building with lightning' },
-  bomb: { label: 'Bomb', hint: 'Drop a bomb' },
-  nuke: { label: 'Nuke', hint: 'The big one: a mushroom cloud and a crater' },
-  raid: { label: 'Raid', hint: 'Call raiders: a longship comes in off the nearest coast' },
-  mallet: { label: 'Mallet', hint: 'Knock a building down a stage' },
-  mend: { label: 'Mend', hint: 'Mend a building a stage (Shift: all at once)' },
-  ufo: { label: 'UFO', hint: 'Call a flying saucer: it beams up somebody near where you click, and brings them back' },
-  hand: { label: 'Hand', hint: 'Pick up a person, an animal or a boat and throw it: press on it, drag, let go' },
-};
+const toolInfo = (): Record<ToolId, { label: string; hint: string }> => ({
+  change: { label: t('Change'), hint: t('Change what a block is, or turn stairs') },
+  paint: { label: t('Paint'), hint: t('Recolour a block') },
+  erase: { label: t('Erase'), hint: t('Remove a piece') },
+  torch: { label: t('Lightning'), hint: t('Strike a building with lightning') },
+  bomb: { label: t('Bomb'), hint: t('Drop a bomb') },
+  nuke: { label: t('Nuke'), hint: t('The big one: a mushroom cloud and a crater') },
+  raid: { label: t('Raid'), hint: t('Call raiders: a longship comes in off the nearest coast') },
+  mallet: { label: t('Mallet'), hint: t('Knock a building down a stage') },
+  mend: { label: t('Mend'), hint: t('Mend a building a stage (Shift: all at once)') },
+  ufo: { label: t('UFO'), hint: t('Call a flying saucer: it beams up somebody near where you click, and brings them back') },
+  hand: { label: t('Hand'), hint: t('Pick up a person, an animal or a boat and throw it: press on it, drag, let go') },
+});
 
-export const DRAWER_LABELS: Record<DrawerId, string> = { build: 'Build', ground: 'Ground', nature: 'Nature', tools: 'Tools', mischief: 'Mischief' };
+export const drawerLabels = (): Record<DrawerId, string> => ({ build: t('Build'), ground: t('Ground'), nature: t('Nature'), tools: t('Tools'), mischief: t('Mischief') });
 export const DRAWER_IDS: readonly DrawerId[] = ['build', 'ground', 'nature', 'tools', 'mischief'];
 
 const titleCase = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
@@ -106,9 +107,9 @@ export function paintsRuns(id: ItemId): boolean {
 }
 
 export function trayItem(id: ItemId): TrayItem {
-  if (isToolId(id)) return { id, drawer: isMischiefTool(id) ? 'mischief' : 'tools', ...TOOL_INFO[id] };
-  if (isLandTool(id)) return { id, drawer: 'nature', ...LAND_INFO[id], ...(id === 'raise' ? { group: 'land' as const } : {}) };
-  const info = PIECE_INFO[id];
+  if (isToolId(id)) return { id, drawer: isMischiefTool(id) ? 'mischief' : 'tools', ...toolInfo()[id] };
+  if (isLandTool(id)) return { id, drawer: 'nature', ...landInfo()[id], ...(id === 'raise' ? { group: 'land' as const } : {}) };
+  const info = pieceInfo()[id];
   return { id, label: info?.label ?? titleCase(id), hint: info?.hint ?? titleCase(id), drawer: info?.drawer ?? 'build' };
 }
 
@@ -122,8 +123,9 @@ export function drawerItems(drawer: DrawerId): TrayItem[] {
 }
 
 function pieceItems(drawer: DrawerId): TrayItem[] {
+  const info = pieceInfo();
   return allPieceIds()
-    .map((id, index) => ({ item: trayItem(id), order: PIECE_INFO[id]?.order ?? 100 + index }))
+    .map((id, index) => ({ item: trayItem(id), order: info[id]?.order ?? 100 + index }))
     .filter(({ item }) => item.drawer === drawer)
     .sort((a, b) => a.order - b.order)
     .map(({ item }) => item);
