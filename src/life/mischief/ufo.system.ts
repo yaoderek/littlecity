@@ -45,8 +45,11 @@ export const UFO = {
   /** How far apart (centre to centre) two saucers' hover points must be not to be stacked one over the other, and the step between them. */
   apart: 2.4,
   stack: 0.95,
-  /** How near the click it looks for somebody (cells): a click on a street takes somebody on that street, never anybody from across the town. */
-  near: 4,
+  /** How high its underside always is over the ground or sea right under it (two storeys and more: room for a beam and somebody rising in it). */
+  minHover: 2.2,
+  /** How fast it glides across, at its hover height, to above whoever it takes (units a second), and rises to clear what is in its way. */
+  glide: 3.5,
+  climb: 2.4,
   /** Seconds: flying in, the beam coming on, the lift's longest, flying off, away, beaming back down, the empty search. */
   arrive: 3,
   beamOn: 0.5,
@@ -65,7 +68,7 @@ export const UFO = {
   elsewhere: 6,
 } as const;
 
-export type UfoPhase = 'in' | 'beam' | 'lift' | 'seek' | 'away' | 'gone' | 'back' | 'drop' | 'leave' | 'done';
+export type UfoPhase = 'in' | 'glide' | 'beam' | 'lift' | 'seek' | 'away' | 'gone' | 'back' | 'drop' | 'leave' | 'done';
 
 export interface Saucer {
   readonly n: number;
@@ -79,8 +82,13 @@ export interface Saucer {
   to: { x: number; y: number; z: number };
   /** The ground under its hover point. */
   ground: number;
-  /** Where it was called (it looks for somebody near here), and where it brings them back to. */
+  /** Where it was called. */
   click: { x: number; z: number };
+  /** Who it may take: the people out of doors in the camera's view when it was called (all of them in tests, with no view). */
+  pool: Person[];
+  /** Where it holds whoever is in its beam (straight under its hatch). */
+  gx: number;
+  gz: number;
   /** Whoever it took (in the beam, aboard, coming back down), or null. */
   person: Person | null;
   aboard: boolean;
@@ -111,8 +119,11 @@ export interface Saucer {
 
 export interface Ufos {
   readonly saucers: readonly Saucer[];
-  /** A click with the UFO: one comes for somebody near (x, z) (as many at once as are called). True. */
-  call(x: number, y: number, z: number): boolean;
+  /**
+   * A click with the UFO at (x, y, z): one comes, for the nearest person out of doors to that point among those
+   * `inView` says the camera sees now (all of them, with none given). As many at once as are called. True.
+   */
+  call(x: number, y: number, z: number, inView?: (x: number, y: number, z: number) => boolean): boolean;
   /** Handles it has out now (0 when none is about: everything it drew has been given back). */
   readonly live: number;
 }
@@ -139,7 +150,7 @@ interface State {
   time: number;
   night: boolean;
   /** A click waiting for the next update (the stage's town and crowd are read there). */
-  calls: { x: number; y: number; z: number }[];
+  calls: { x: number; y: number; z: number; pool: Person[] }[];
   off: () => void;
   ufos: Ufos;
   m: number[];
@@ -156,10 +167,10 @@ function takeable(p: Person, list: readonly Saucer[]): boolean {
   return !list.some((s) => s.person === p);
 }
 
-/** Somebody out of doors: the nearest to (x, z) within UFO.near; nobody if none is that near. */
-export function pickPerson(crowd: Crowd, list: readonly Saucer[], x: number, z: number): Person | null {
-  let best: Person | null = null, bestD: number = UFO.near;
-  for (const p of crowd.people) {
+/** The nearest to (x, z) of those it may take (out of doors, and nobody another saucer has), or null. */
+export function pickPerson(pool: readonly Person[], list: readonly Saucer[], x: number, z: number): Person | null {
+  let best: Person | null = null, bestD = Infinity;
+  for (const p of pool) {
     if (!takeable(p, list)) continue;
     const d = Math.hypot(p.x - x, p.z - z);
     if (d < bestD) {
@@ -190,16 +201,31 @@ export function skyTop(t: Thrower | null, shape: ShapePlan | null, x: number, z:
       top = Math.max(top, g.surface(cx + 0.5, cz + 0.5, 99).h, g.surface(nx, nz, 99).h);
     }
   }
-  if (shape) {
-    for (const [c, k] of shape.kinds) {
-      if (k !== 'tree') continue;
-      const cx = keyX(c) + 0.5, cz = keyZ(c) + 0.5;
-      if (Math.abs(cx - x) > r + 1 || Math.abs(cz - z) > r + 1 || Math.hypot(cx - x, cz - z) > r + 0.7) continue;
-      top = Math.max(top, keyY(c) * CELL_H + TREE);
-    }
+  for (const [cx, cz, tt] of treesOf(shape)) {
+    if (Math.abs(cx - x) > r + 1 || Math.abs(cz - z) > r + 1 || Math.hypot(cx - x, cz - z) > r + 0.7) continue;
+    top = Math.max(top, tt);
   }
   const s = g.surface(x, z, 99);
   return { top, ground: s.water ? SEA_Y : s.h };
+}
+
+const treeCache = new WeakMap<ShapePlan, [number, number, number][]>();
+/** The town's trees as (x, z, top), worked out once a town. */
+function treesOf(shape: ShapePlan | null): [number, number, number][] {
+  if (!shape) return [];
+  let l = treeCache.get(shape);
+  if (!l) {
+    l = [];
+    for (const [c, k] of shape.kinds) if (k === 'tree') l.push([keyX(c) + 0.5, keyZ(c) + 0.5, keyY(c) * CELL_H + TREE]);
+    treeCache.set(shape, l);
+  }
+  return l;
+}
+
+/** The height its underside hovers at over (x, z): clear above everything round there, and never less than UFO.minHover over the ground or sea right under it. */
+function hoverAt(t: Thrower | null, shape: ShapePlan | null, x: number, z: number): { y: number; ground: number } {
+  const { top, ground } = skyTop(t, shape, x, z, SAUCER.r + 0.4);
+  return { y: Math.max(top + UFO.clear, ground + UFO.minHover), ground };
 }
 
 /** The height it cruises at: clear above the tallest thing on the island (worked out once a town). */
@@ -254,8 +280,21 @@ function fly(s: Saucer, dur: number, arriving: boolean, wait = 0): number {
  */
 function holdOver(st: State, s: Saucer, dt: number): void {
   const u = s.t / UFO.arrive;
-  if (u < 0.69 || u > 0.71 || s.wait >= 6) return;
-  const busy = st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && o.y < s.y + 0.4 && o.y > s.to.y - 1 && Math.hypot(o.x - s.x, o.z - s.z) < UFO.apart + 0.3 && (o.phase === 'in' || o.phase === 'back' || o.phase === 'away' || o.phase === 'leave'));
+  if (u > 0.71) {
+    // Coming down: it settles above any saucer that has come in under it since (never down onto one).
+    for (const o of st.list) {
+      if (o === s || o.phase === 'gone' || o.phase === 'done' || o.y > s.y - 0.05 || Math.hypot(o.x - s.to.x, o.z - s.to.z) >= SAUCER.r * 2 + 0.3) continue;
+      if (o.y + UFO.stack > s.to.y) s.to.y = o.y + UFO.stack;
+    }
+    s.hover = { ...s.to };
+    return;
+  }
+  if (u < 0.69 || s.wait >= 30) return;
+  // Its place again, above any saucer that has since come to hover near there (one gliding over to its catch).
+  s.to.y = stacked(st, s.to.x, s.to.z, s.to.y, s);
+  s.hover = { ...s.to };
+  // Held while any other saucer is in the column under it down to its place.
+  const busy = st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && o.y < s.y + 0.4 && o.y > s.to.y - (SAUCER.under + SAUCER.over + 0.2) && Math.hypot(o.x - s.x, o.z - s.z) < SAUCER.r * 2 + 0.3);
   if (!busy) return;
   s.t -= dt;
   s.wait += dt;
@@ -267,28 +306,28 @@ function freeLane(st: State, self?: Saucer): number {
 }
 
 /** A hover height at (x, z) no lower than `y` and clear above every other saucer hovering (or coming to hover) near there. */
-function stacked(st: State, x: number, z: number, y: number): number {
+function stacked(st: State, x: number, z: number, y: number, self?: Saucer): number {
   // Above the highest of those near (so it never comes down through one on its way to its place).
   let h = y;
   for (const o of st.list) {
-    if (o.phase === 'gone' || o.phase === 'done' || Math.hypot(o.hover.x - x, o.hover.z - z) >= UFO.apart) continue;
+    if (o === self || o.phase === 'gone' || o.phase === 'done' || Math.hypot(o.hover.x - x, o.hover.z - z) >= UFO.apart) continue;
     h = Math.max(h, o.hover.y + UFO.stack);
   }
   return h;
 }
 
-function create(st: State, stage: LifeStage, x: number, y: number, z: number): boolean {
+function create(st: State, stage: LifeStage, x: number, y: number, z: number, pool: Person[]): boolean {
   const t = throwerOf(stage);
   const n = ++st.n;
   // To where it was called: it hovers clear of everything round there (its beam leans to whoever it takes),
   // and above any other saucer hovering near (never through one).
-  const { top, ground } = skyTop(t, st.shape, x, z, SAUCER.r + 0.4);
+  const { y: hy, ground } = hoverAt(t, st.shape, x, z);
   const lane = freeLane(st);
   const cruise = cruiseOf(st, t) + lane * UFO.stack;
   const from = edgePoint(cruise, n, 'in');
   const own = st.own.stage;
   const s: Saucer = {
-    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, Math.max(top, ground) + UFO.clear), z }, ground, click: { x, z },
+    n, phase: 'in', t: 0, x: from.x, y: from.y, z: from.z, from, to: { x, y: stacked(st, x, z, hy), z }, ground, click: { x, z }, pool, gx: x, gz: z,
     person: null, aboard: false, away: UFO.awayMin + rand(n, 'away') * (UFO.awayMax - UFO.awayMin), spin: 0, beam: 0, lean: 0, leanYaw: 0, gy: 0, wait: 0, yielded: 0, lane, hover: { x: 0, y: 0, z: 0 },
     vx: 0, vz: 0, ax: 1, az: 0,
     h: MESHES.map((mesh) => {
@@ -299,6 +338,8 @@ function create(st: State, stage: LifeStage, x: number, y: number, z: number): b
   };
   void y;
   s.hover = { ...s.to };
+  // Who it comes for is settled at the click: the nearest it may take (nobody another saucer has).
+  s.person = pickPerson(pool, st.list, x, z);
   st.list.push(s);
   return true;
 }
@@ -317,25 +358,72 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
     case 'in': {
       holdOver(st, s, dt);
       if (fly(s, UFO.arrive, true) < 1) break;
-      // Over where it was called, it looks: the nearest person out of doors there; else it searches the spot and goes.
-      s.person = crowd ? pickPerson(crowd, st.list.filter((o) => o !== s), s.click.x, s.click.z) : null;
-      phase(s, s.person ? 'beam' : 'seek');
+      // Over where it was called, it looks: the nearest person it may take (whoever the camera saw at the click);
+      // over to them, or with nobody, it searches the spot and goes.
+      if (!p || !takeable(p, st.list.filter((o) => o !== s))) s.person = pickPerson(s.pool, st.list.filter((o) => o !== s), s.click.x, s.click.z);
+      phase(s, s.person ? 'glide' : 'seek');
       break;
     }
-    case 'beam': {
-      s.beam = Math.min(1, s.t / UFO.beamOn);
-      // The beam leans to them where they stand (it stays where it hovers, clear of everything and of other saucers).
-      if (p) aimAt(s, p.x, p.z);
-      if (s.t < UFO.beamOn) break;
-      if (!p || !t || !t.grab(p)) {
+    case 'glide': {
+      // Across at its hover height to straight over them (following them as they walk): up first wherever
+      // something in its way, or another saucer, needs it higher; never down through anything.
+      if (!p || !takeable(p, st.list.filter((o) => o !== s))) {
+        s.person = pickPerson(s.pool, st.list.filter((o) => o !== s), s.x, s.z);
+        if (!s.person) phase(s, 'seek');
+        break;
+      }
+      const dx = p.x - s.x, dz = p.z - s.z, d = Math.hypot(dx, dz);
+      const step = Math.min(d, UFO.glide * dt);
+      const nx = s.x + (d > 0 ? (dx / d) * step : 0), nz = s.z + (d > 0 ? (dz / d) * step : 0);
+      // Above any saucer already hovering over a catch close by (two people side by side: one saucer over the
+      // other); others on the move it gives way to, below.
+      let need = hoverAt(t, st.shape, nx, nz).y;
+      for (const o of st.list) {
+        // (Of two gliding, the later one goes over the earlier.)
+        if (o === s || (o.phase !== 'beam' && o.phase !== 'lift' && o.phase !== 'seek' && o.phase !== 'drop' && !(o.phase === 'glide' && o.n < s.n))) continue;
+        if (Math.hypot(o.x - nx, o.z - nz) < SAUCER.r * 2 + 0.3) need = Math.max(need, o.y + UFO.stack);
+      }
+      if (need > s.y + 0.01) {
+        s.y = Math.min(need, s.y + UFO.climb * dt);
+        break;
+      }
+      // Never under one coming down to hover at its own height there: it waits for that one to settle first.
+      if (st.list.some((o) => o !== s && (o.phase === 'in' || o.phase === 'back') && o.t / UFO.arrive > 0.715 && Math.hypot(o.to.x - nx, o.to.z - nz) < SAUCER.r * 2 + 0.3 && Math.abs(o.to.y - s.y) < SAUCER.under + SAUCER.over + 0.3)) break;
+      s.x = nx;
+      s.z = nz;
+      s.to = { x: nx, y: s.y, z: nz };
+      s.hover = { x: nx, y: s.y, z: nz };
+      s.ground = hoverAt(t, st.shape, nx, nz).ground;
+      if (d > 0.04) break;
+      // Over them: they are held where they stand at once (no more walking), and the beam comes down.
+      if (!t || !t.grab(p)) {
         s.person = null;
         phase(s, 'seek');
         break;
       }
-      // Off their feet: what they carry (or a straw hat) drops back to the ground.
       t.beamed.add(p);
+      s.gx = p.x;
+      s.gz = p.z;
+      s.gy = p.y + 0.3;
+      t.carry(p, s.gx, s.gy, s.gz);
+      s.x = s.gx;
+      s.z = s.gz;
+      phase(s, 'beam');
+      break;
+    }
+    case 'beam': {
+      s.beam = Math.min(1, s.t / UFO.beamOn);
+      s.lean = 0;
+      if (!p || !t || !t.thrown.has(p)) {
+        s.person = null;
+        phase(s, 'seek');
+        break;
+      }
+      // Held still where they stood while the beam comes down on them.
+      t.carry(p, s.gx, s.gy, s.gz);
+      if (s.t < UFO.beamOn) break;
+      // Off their feet: what they carry (or a straw hat) drops back to the ground.
       t.knockLoose(p);
-      s.gy = p.y + 0.35;
       phase(s, 'lift');
       break;
     }
@@ -349,10 +437,9 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       s.gy += (0.25 + s.t * 0.8) * dt;
       const hatch = s.y - 0.02;
       const b = t.thrown.get(p)!.body;
-      aimAt(s, b.x, b.z);
-      b.heading += dt * 1.6;
-      const k = Math.min(1, dt * 1.5);
-      t.carry(p, b.x + (s.x - b.x) * k, Math.min(s.gy, hatch + 0.3), b.z + (s.z - b.z) * k);
+      // Straight up the beam, turning gently, into the hatch right above.
+      b.heading += dt * 1.2;
+      t.carry(p, s.gx, Math.min(s.gy, hatch + 0.3), s.gz);
       if (s.gy >= hatch + 0.3 || s.t > UFO.lift + 4) {
         // In through the hatch: out of sight inside it.
         s.lean = 0;
@@ -380,10 +467,29 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
     case 'away':
     case 'leave': {
       s.beam = Math.max(0, s.beam - dt * 3);
-      // A moment to spin up and tilt, then off: held there (up to 20 s) while another saucer is still in the column over it.
-      if (s.t > UFO.prep && s.wait < 20 && st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && o.y > s.y - 0.05 && o.y < st.cruise + o.lane * UFO.stack - 0.05 && Math.hypot(o.x - s.x, o.z - s.z) < UFO.apart + 0.3)) {
-        s.t = UFO.prep;
-        s.wait += dt;
+      // A moment to spin up and tilt, then off, straight up: while another saucer is still in the column over it
+      // (up to its cruising height), it slides out from under, level, towards where it is going, then goes up.
+      if (s.t > UFO.prep && s.wait < 20) {
+        let bx = 0, bz = 0, blocked = false;
+        for (const o of st.list) {
+          if (o === s || o.phase === 'gone' || o.phase === 'done' || ((o.phase === 'in' || o.phase === 'back') && o.t / UFO.arrive <= 0.715)) continue;
+          if (o.y < s.y - 0.05 || o.y > s.to.y + SAUCER.under + SAUCER.over + 0.15) continue;
+          const ox = s.x - o.x, oz = s.z - o.z, od = Math.hypot(ox, oz);
+          if (od >= SAUCER.r * 2 + 0.3) continue;
+          blocked = true;
+          bx += od > 0.01 ? ox / od : 0;
+          bz += od > 0.01 ? oz / od : 0;
+        }
+        if (blocked) {
+          const tx = s.to.x - s.x, tz = s.to.z - s.z, td = Math.hypot(tx, tz) || 1;
+          bx += (0.5 * tx) / td;
+          bz += (0.5 * tz) / td;
+          const bd = Math.hypot(bx, bz) || 1;
+          const nx = s.x + (bx / bd) * UFO.glide * dt, nz = s.z + (bz / bd) * UFO.glide * dt;
+          if (!st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && Math.hypot(o.x - nx, o.z - nz) < SAUCER.r * 2 + 0.25 && Math.abs(o.y - s.y) < SAUCER.under + SAUCER.over + 0.15)) s.from = { x: nx, y: s.y, z: nz };
+          s.t = UFO.prep;
+          s.wait += dt;
+        }
       }
       const u = fly(s, UFO.leave, false, UFO.prep);
       if (p && s.aboard && t) t.carry(p, s.x, s.y + 0.1, s.z);
@@ -410,14 +516,14 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
         phase(s, 'done');
         break;
       }
-      const { top, ground } = skyTop(t, st.shape, spot.x, spot.z, SAUCER.r + 0.5);
+      const { y: hy, ground } = hoverAt(t, st.shape, spot.x, spot.z);
       s.lane = freeLane(st, s);
       s.wait = 0;
       s.from = edgePoint(cruiseOf(st, t) + s.lane * UFO.stack, s.n, 'back');
       s.x = s.from.x;
       s.y = s.from.y;
       s.z = s.from.z;
-      s.to = { x: spot.x, y: stacked(st, spot.x, spot.z, Math.max(top, ground) + UFO.clear), z: spot.z };
+      s.to = { x: spot.x, y: stacked(st, spot.x, spot.z, hy), z: spot.z };
       s.hover = { ...s.to };
       s.ground = spot.y;
       phase(s, 'back');
@@ -465,9 +571,10 @@ function step(st: State, stage: LifeStage, s: Saucer, dt: number): void {
       break;
   }
   // Flying, it gives way: if this step would take it into another saucer, it holds
-  // where it was this step and goes on when the way is clear (each in turn: never more than 15 s in all).
-  if ((s.phase === 'in' || s.phase === 'back' || s.phase === 'away' || s.phase === 'leave') && s.yielded < 15) {
-    const clash = st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && Math.hypot(o.x - s.x, o.z - s.z) < SAUCER.r * 2 + 0.25 && Math.abs(o.y - s.y) < SAUCER.under + SAUCER.over + 0.15);
+  // where it was this step and goes on when the way is clear (each in turn: never more than 40 s in all).
+  if ((s.phase === 'in' || s.phase === 'glide' || s.phase === 'back' || s.phase === 'away' || s.phase === 'leave') && s.yielded < 90) {
+    const moved = s.x !== x0 || s.y !== y0 || s.z !== z0;
+    const clash = moved && st.list.some((o) => o !== s && o.phase !== 'gone' && o.phase !== 'done' && Math.hypot(o.x - s.x, o.z - s.z) < SAUCER.r * 2 + 0.25 && Math.abs(o.y - s.y) < SAUCER.under + SAUCER.over + 0.15);
     if (clash) {
       s.x = x0;
       s.y = y0;
@@ -708,8 +815,11 @@ export default defineSystem<State>({
       get live() {
         return st.own.live;
       },
-      call(x, y, z) {
-        st.calls.push({ x, y, z });
+      call(x, y, z, inView) {
+        // Who it may take is settled now, from what the camera sees at the click.
+        const crowd = crowdOf(ctx.stage);
+        const pool = (crowd?.people ?? []).filter((p) => takeable(p, []) && (!inView || inView(p.x, p.y + 0.2, p.z)));
+        st.calls.push({ x, y, z, pool });
         return true;
       },
     };
@@ -751,7 +861,7 @@ export default defineSystem<State>({
     // Its meshes built ahead, one a frame (cached for good): the click that calls one builds nothing.
     if (st.warm < MESHES.length && st.shape) MESHES[st.warm++]!();
     st.night = !signals.time.isDay;
-    for (const c of st.calls) create(st, ctx.stage, c.x, c.y, c.z);
+    for (const c of st.calls) create(st, ctx.stage, c.x, c.y, c.z, c.pool);
     st.calls = [];
     for (let i = st.list.length - 1; i >= 0; i--) {
       const s = st.list[i]!;

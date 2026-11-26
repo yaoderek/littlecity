@@ -134,34 +134,105 @@ describe('the UFO', () => {
     void crowd;
   }, 180_000);
 
-  test('it goes where it was clicked: with nobody within reach of the click it takes nobody, however many are out elsewhere', () => {
+  test('who it takes: the nearest of those the camera sees, however far from the click; with nobody in view, nobody', () => {
     const t = grown();
     const crowd = crowdOf(t.stage)!;
     const ufos = ufosOf(t.stage)!;
-    const out = crowd.people.filter((p) => p.visible && p.mode !== 'home' && p.mode !== 'visit');
-    expect(out.length).toBeGreaterThan(5);
-    // A spot on the island well away from everybody out now.
-    const h = t.game.shape.terrain.height;
-    let spot: [number, number] | null = null;
-    for (let z = 3; z < 45 && !spot; z++) for (let x = 3; x < 45 && !spot; x++) {
-      if (h[x + z * 48]! === 0) continue;
-      if (crowd.people.every((p) => Math.hypot(p.x - x - 0.5, p.z - z - 0.5) > UFO.near + 4)) spot = [x + 0.5, z + 0.5];
+    // The camera sees only the east of the town (x > 30); the click is far off to the west.
+    const inView = (x: number): boolean => x > 30;
+    const seen = crowd.people.filter((p) => p.visible && (p.mode === 'walk' || p.mode === 'linger') && inView(p.x));
+    expect(seen.length).toBeGreaterThan(0);
+    const click = { x: 10.5, z: 24.5 };
+    const nearest = [...seen].sort((a, b) => Math.hypot(a.x - click.x, a.z - click.z) - Math.hypot(b.x - click.x, b.z - click.z))[0]!;
+    expect(ufos.call(click.x, 1, click.z, (x) => inView(x))).toBe(true);
+    let taken: Person | null = null;
+    for (let i = 0; i < 400 && !taken; i++) {
+      t.run(0.1);
+      const s = ufos.saucers[0];
+      if (s?.person && (s.phase === 'beam' || s.phase === 'lift')) taken = s.person;
     }
-    expect(spot).not.toBeNull();
-    expect(ufos.call(spot![0], 1, spot![1])).toBe(true);
+    expect(taken).not.toBeNull();
+    // In view at the click; the nearest of them (unless that one went indoors meanwhile: then the next).
+    expect(seen).toContain(taken);
+    if (nearest.visible && nearest.mode !== 'home' && nearest.mode !== 'visit') expect(taken).toBe(nearest);
+    for (let i = 0; i < 1200 && ufos.saucers.length > 0; i++) t.run(0.1);
+
+    // Nobody in view: it comes to the click, searches it and leaves, taking nobody (though the town is full).
+    expect(ufos.call(click.x, 1, click.z, () => false)).toBe(true);
     t.run(0.1);
-    const seen = new Set<string>();
-    for (let i = 0; i < 200 && ufos.saucers.length > 0; i++) {
+    const phases = new Set<string>();
+    for (let i = 0; i < 300 && ufos.saucers.length > 0; i++) {
       t.run(0.1);
       const s = ufos.saucers[0];
       if (!s) break;
-      seen.add(s.phase);
-      // It never leaves the spot to look elsewhere.
-      if (s.phase === 'seek' || s.phase === 'beam') expect(Math.hypot(s.x - spot![0], s.z - spot![1])).toBeLessThan(0.5);
+      phases.add(s.phase);
       expect(s.person).toBeNull();
+      if (s.phase === 'seek') expect(Math.hypot(s.x - click.x, s.z - click.z)).toBeLessThan(0.5);
     }
-    expect(seen.has('seek')).toBe(true);
-    expect(seen.has('lift')).toBe(false);
+    expect(phases.has('seek')).toBe(true);
+    expect(phases.has('lift')).toBe(false);
+  }, 180_000);
+
+  test('the lift is straight: a walker taken is held where they stood and rises under the hatch, no slide to the side, no jump', () => {
+    const t = grown();
+    const crowd = crowdOf(t.stage)!;
+    const ufos = ufosOf(t.stage)!;
+    const th = throwerOf(t.stage)!;
+    let lifts = 0, worstOff = 0, worstStep = 0;
+    for (let k = 0; k < 60 && lifts < 40; k++) {
+      // Somebody walking, the nearer the better (a saucer for each, one at a time).
+      const p = crowd.people.find((q) => q.visible && q.mode === 'walk' && !ufos.saucers.some((s) => s.person === q));
+      if (!p) {
+        t.run(1);
+        continue;
+      }
+      ufos.call(p.x, p.y, p.z, (x, _y, z) => Math.hypot(x - p.x, z - p.z) < 0.01);
+      let last: [number, number] | null = null;
+      for (let i = 0; i < 600; i++) {
+        t.frame(1 / 30);
+        const s = ufos.saucers.find((o) => o.pool[0] === p);
+        if (!s || s.phase === 'away' || s.phase === 'gone') break;
+        if (s.phase !== 'beam' && s.phase !== 'lift') continue;
+        const b = th.thrown.get(p)?.body;
+        if (!b) continue;
+        worstOff = Math.max(worstOff, Math.hypot(b.x - s.gx, b.z - s.gz));
+        if (last) worstStep = Math.max(worstStep, Math.hypot(b.x - last[0], b.z - last[1]));
+        last = [b.x, b.z];
+      }
+      if (last) lifts++;
+      t.run(0.5);
+    }
+    expect(lifts).toBeGreaterThan(20);
+    expect(worstOff).toBeLessThan(0.02);
+    expect(worstStep).toBeLessThan(0.02);
+    for (let i = 0; i < 3000 && ufos.saucers.length > 0; i++) t.run(0.1);
+  }, 600_000);
+
+  test('it never sits on the ground: over open ground and over the sea its underside stays two storeys up and more, in every phase', () => {
+    const terrain = generateTerrain(7);
+    const t = createTurmoil({ world: initialWorld(7, terrain), terrain });
+    t.run(2);
+    const ufos = ufosOf(t.stage)!;
+    const g = (): ReturnType<typeof throwerOf> => throwerOf(t.stage);
+    // Open ground somewhere on the island, and the sea off it.
+    const h = terrain.height;
+    let land: [number, number] | null = null;
+    for (let i = 0; i < h.length && !land; i++) if (h[i]! > 0 && i % 48 > 10 && i % 48 < 38 && Math.floor(i / 48) > 10 && Math.floor(i / 48) < 38) land = [(i % 48) + 0.5, Math.floor(i / 48) + 0.5];
+    const sea: [number, number] = [2.5, 2.5];
+    const low: string[] = [];
+    for (const [x, z] of [land!, sea]) {
+      expect(ufos.call(x, 0.4, z)).toBe(true);
+      t.run(0.05);
+      for (let i = 0; i < 300 && ufos.saucers.length > 0; i++) {
+        t.run(1 / 30);
+        const s = ufos.saucers[0];
+        if (!s || s.phase === 'in' || s.phase === 'away' || s.phase === 'leave' || s.phase === 'gone' || s.phase === 'back') continue;
+        const under = g()!.ground!.surface(s.x, s.z, 99);
+        const above = s.y - (under.water ? 0.4 : under.h);
+        if (above < UFO.minHover - 0.05) low.push(`${s.phase} ${above.toFixed(2)} at ${x}, ${z}`);
+      }
+    }
+    expect(low.slice(0, 5)).toEqual([]);
   }, 120_000);
 
   test('it never passes through anything: its disc stays clear of buildings, towers and trees all the way, coming in beside the tallest', () => {
@@ -217,7 +288,7 @@ describe('the UFO', () => {
       const shown = ufos.saucers.filter((s) => s.phase !== 'gone' && s.phase !== 'done');
       for (let a = 0; a < shown.length; a++) for (let b = a + 1; b < shown.length; b++) {
         const A = shown[a]!, B = shown[b]!;
-        if (Math.hypot(A.x - B.x, A.z - B.z) < SAUCER.r * 2 && Math.abs(A.y - B.y) < SAUCER.under + SAUCER.over) problems.push(`${A.n} (${A.phase} lane ${A.lane} t ${A.t.toFixed(2)} to ${A.to.y.toFixed(1)}) and ${B.n} (${B.phase} lane ${B.lane} t ${B.t.toFixed(2)} to ${B.to.y.toFixed(1)}) at ${A.x.toFixed(1)}, ${A.y.toFixed(1)}, ${A.z.toFixed(1)}`);
+        if (Math.hypot(A.x - B.x, A.z - B.z) < SAUCER.r * 2 && Math.abs(A.y - B.y) < SAUCER.under + SAUCER.over) problems.push(`${A.n} (${A.phase} lane ${A.lane} y${A.yielded.toFixed(1)} w${A.wait.toFixed(1)} t ${A.t.toFixed(2)} to ${A.to.y.toFixed(1)}) and ${B.n} (${B.phase} lane ${B.lane} y${B.yielded.toFixed(1)} t ${B.t.toFixed(2)} to ${B.to.y.toFixed(1)}) at ${A.x.toFixed(1)}, ${A.y.toFixed(1)}, ${A.z.toFixed(1)}`);
       }
     }
     expect(problems.slice(0, 5)).toEqual([]);
