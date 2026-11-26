@@ -359,6 +359,13 @@ const DRAWINGS: Record<string, string> = {
     `<path stroke-width="1.5" d="M28.4 31.4 L28.5 24.8 L32.8 20.6 L37 24.6 L37 31 Z" fill="${C.pink}"/>` +
     `<path ${thin} d="M31.6 31.2 L31.6 27.8 L34 27.8 L34 31.1"/>` +
     `<path stroke-width="1.5" d="M29.8 11.6 L29.9 4.8 L33.4 4.6 L33.4 10.8 L31.6 9.4 Z" fill="${C.red}"/>`,
+  // A cup of coffee on its saucer, steam rising: the tip jar (Ko-fi link in the corner).
+  coffee:
+    `<path ${thin} d="M18.4 13.6 Q15.8 10.6 18.6 7.6 Q21 5 18.8 2.8 M26.4 13.6 Q23.8 10.6 26.6 7.6 Q29 5 26.8 2.8"/>` +
+    `<path d="M33.6 22.4 Q41.4 21.2 41 27.4 Q40.6 32.8 32 32.6" stroke-width="2.4"/>` +
+    `<path d="M10 18.6 L10.8 30.6 Q11.6 37.4 18 38.2 L26.2 38.4 Q32.6 37.6 33.6 30.4 L34.2 18.4 Z" fill="${C.white}"/>` +
+    `<path d="M10 18.6 Q22 22.4 34.2 18.4 Q22 15.2 10 18.6 Z" fill="${C.trunk}"/>` +
+    `<path d="M5.6 39.4 Q22 45.2 38.6 39.2" stroke-width="2.4"/>`,
   // A small tick in a ring: an entry of the guide the town already holds.
   tick: `<circle cx="24" cy="24" r="17.5" fill="${C.leaf}"/><path stroke-width="3.6" d="M15.2 24.6 L21.6 31 L33.4 17.4" stroke="${C.ink}"/>`,
   'time-run':

@@ -14,8 +14,12 @@
 import { LANG_NAMES, LANGS, t, type Lang } from '@/i18n';
 import { ISLAND_KIND_NAMES, ISLAND_KINDS, type IslandKind } from '@/terrain/kinds';
 import { CHARACTER_NAMES, CHARACTERS, type Character } from '@/townmaker/character';
-import { el, iconButton, setIcon } from './dom';
+import { el, iconButton, isPhone, setIcon } from './dom';
 import { icon } from './icons';
+import { track } from '@/app/analytics';
+
+/** The tip jar. On a wide screen a small link in the corner (interface.ts); on a phone, the menu's last row. */
+export const COFFEE_URL = 'https://ko-fi.com/yaoderek';
 
 /** What a choice does; a promise keeps the menu open, working, until it settles. */
 export type Work = void | Promise<unknown>;
@@ -295,6 +299,16 @@ export function createMenu(actions: MenuActions): Menu {
       ...(raiders ? [raiders] : []),
       ...(stats ? [stats] : []),
       ...(actions.language ? [el('div', { class: 'lc-menu-rule' }), item('language', 'language', t('Language'), showLanguages, true)] : []),
+      // Phones only: Derek, 2026-11-25, wanted it in the menu there, not on the town.
+      ...(isPhone()
+        ? [
+            el('div', { class: 'lc-menu-rule' }),
+            item('coffee', 'coffee', t('Buy me a coffee'), () => {
+              track('coffee_clicked', { from: 'menu' });
+              window.open(COFFEE_URL, '_blank', 'noopener');
+            }),
+          ]
+        : []),
     );
   };
 

@@ -22,9 +22,7 @@ cd "$OUT"
 git add -A
 git commit -q -m "The old address forwards to littlecity.io, bringing towns along (from $SHA)
 
-The last game build stays beside the page, for games still open here.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+The last game build stays beside the page, for games still open here."
 git push -q "$REMOTE" gh-pages
 gh api -X POST repos/yaoderek/littlecity/pages/builds >/dev/null 2>&1 || true
 echo "published the forwarding page from $SHA to https://yaoderek.github.io/littlecity/"

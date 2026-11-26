@@ -26,9 +26,7 @@ cp "$ROOT"/docs/readme/*.jpg "$OUT/docs/readme/"
 cd "$OUT"
 git init -q -b gh-pages
 git add -A
-git commit -q -m "Publish Little City build from $SHA
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -q -m "Publish Little City build from $SHA"
 git push -q -f "https://github.com/$SITE.git" gh-pages
 rm -rf "$OUT/.git"
 # A forced push does not always start a Pages build; ask for one.
