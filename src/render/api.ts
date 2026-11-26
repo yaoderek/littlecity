@@ -139,8 +139,9 @@ export interface TownView {
   /**
    * Added by Fly. Gets the perspective eye ready ahead of time (its shaders compiled, its target
    * made), so the first take-off does not stall a frame. Call when the page is idle; harmless twice.
+   * Resolves once the shaders are ready (never rejects).
    */
-  prepareEye?(): void;
+  prepareEye?(): Promise<void>;
   /**
    * Gets the held piece's ghost ready ahead of time (its two shaders compiled), so the first hover
    * does not stall a frame. Call when the page is idle; harmless twice.

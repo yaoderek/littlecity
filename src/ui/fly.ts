@@ -1,8 +1,7 @@
 // Fly mode (design section 7, "Fly mode"): from wherever the camera is, fly
 // round the town Minecraft style, then glide back. Owner: Interface.
 //
-//   in        the wings button in the top bar, or F (desktop only). The
-//             builder's camera turns into a perspective eye without a jump:
+//   in        the wings button in the top bar, or F. The builder's camera turns into a perspective eye without a jump:
 //             a dolly zoom from a very narrow field of view (which draws the
 //             same picture as the builder's orthographic camera) out to the
 //             flying one, the eye coming in along the line it looks down.
@@ -15,6 +14,9 @@
 //             everything to where the dolly zoom ended, and the dolly zoom
 //             runs backwards to the builder's view as it was.
 //
+// On a touch screen a thumb low on the left holds a stick, a finger anywhere
+// else looks, and a Land button glides back (src/fly/thumbs.ts).
+//
 // The flying itself and what is in the way are src/fly (pure, fixed step).
 // This file is input, the glides and the DOM. Fly mode never edits the town.
 
@@ -24,18 +26,22 @@ import { eyeMatchingOrbit } from '@/render/eyecam';
 import type { DressingPlan, ShapePlan } from '@/resolve/plan';
 import { changeSpeed, clearAt, startFlight, stepFlight, type FlightState } from '@/fly/flight';
 import { along, clearPath, planPath, type Vec3 } from '@/fly/glide';
-import { addLook, applyLook, newLook } from '@/fly/look';
+import { FLY_FOV, flyFov } from '@/fly/lens';
+import { addDrag, addLook, applyLook, newLook } from '@/fly/look';
 import { createSolidMap, type SolidMap } from '@/fly/solid';
+import { createThumbs } from '@/fly/thumbs';
 import { t } from '@/i18n';
 import { el, iconButton, isCoarsePointer } from './dom';
 
-/** The flying eye's vertical field of view, degrees. */
-export const FLY_FOV = 62;
 /** The dolly zoom starts (and the way out ends) at this field of view: the builder's picture, near enough. */
 const FLAT_FOV = 0.5;
 /** Seconds: the way in, and the way out (gliding back and the dolly zoom together). */
 const IN_SECONDS = 0.7;
 const OUT_SECONDS = 0.9;
+/** How quickly the lens opens once in, on a touch screen (1/s). */
+const LENS_RATE = 5;
+/** The longest a first tap on the wings waits for the eye's shaders, milliseconds. */
+const PREPARE_LONGEST = 2500;
 
 export interface FlyHost {
   view: TownView;
@@ -59,16 +65,14 @@ export interface FlyDebug {
 }
 
 export interface FlyMode {
-  /** The wings for the top bar; null on touch screens (fly mode is desktop only for now). */
-  readonly button: HTMLButtonElement | null;
+  /** The wings for the top bar. */
+  readonly button: HTMLButtonElement;
   /** The layer over the town while flying (it takes every click and the wheel), with the hint. */
   readonly el: HTMLElement;
   /** Flying, or gliding in or out. */
   readonly active: boolean;
   readonly phase: FlyPhase;
-  /** Fly mode can be had here (not on a touch screen). */
-  readonly available: boolean;
-  /** Takes off from the camera as it is. False if fly mode is already on or not available. */
+  /** Takes off from the camera as it is. False if fly mode is already on. */
   enter(): boolean;
   /** Glides back to the builder's view (or cuts to it with `instant`). */
   exit(opts?: { instant?: boolean }): void;
@@ -100,8 +104,11 @@ const DEG = Math.PI / 180;
 const fovBetween = (a: number, b: number, t: number): number => (2 * Math.atan(lerp(Math.tan((a * DEG) / 2), Math.tan((b * DEG) / 2), t))) / DEG;
 
 /** What the fly button and layer say (out here: inside createFly, `t` is the way in or out). */
-const words = (): { fly: string; land: string; keys: string } => ({
+const words = (): { fly: string; flyTouch: string; land: string; keys: string; landButton: string; look: string } => ({
   fly: t('Fly (F)'),
+  flyTouch: t('Fly'),
+  landButton: t('Land'),
+  look: t('Drag to look'),
   land: t('Esc to land'),
   keys: t('W A S D fly · Space up · Shift down · wheel for speed'),
 });
@@ -112,7 +119,7 @@ const FLY_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown'
 
 export function createFly(host: FlyHost): FlyMode {
   const { view } = host;
-  const available = !isCoarsePointer();
+  const touch = isCoarsePointer();
   let dressing: DressingPlan | null = null;
   let map: SolidMap | null = null;
   let mapFor: { shape: ShapePlan | null; dressing: DressingPlan | null } = { shape: null, dressing: null };
@@ -135,14 +142,18 @@ export function createFly(host: FlyHost): FlyMode {
 
   // ── the DOM ────────────────────────────────────────────────────────────
   const said = words();
-  const button = available ? iconButton('wings', said.fly, { class: 'lc-round', attrs: { 'data-ui': 'fly' } }) : null;
+  const button = iconButton('wings', touch ? said.flyTouch : said.fly, { class: 'lc-round', attrs: { 'data-ui': 'fly' } });
   const speedNote = el('span', { class: 'lc-fly-speed', attrs: { 'data-ui': 'fly-speed', hidden: '' } });
   const hint = el('div', { class: 'lc-card lc-fly-hint', attrs: { 'data-ui': 'fly-hint' } }, [
     el('b', { text: said.land }),
     el('span', { text: said.keys }),
     speedNote,
   ]);
-  const layer = el('div', { class: 'lc-fly', attrs: { 'data-ui': 'fly-layer', hidden: '' } }, [hint]);
+  const land = el('button', { class: 'lc-card lc-text-btn lc-fly-land', text: said.landButton, attrs: { type: 'button', 'data-ui': 'fly-land' } });
+  const knob = el('div', { class: 'lc-fly-knob' });
+  const stick = el('div', { class: 'lc-fly-stick', attrs: { 'data-ui': 'fly-stick', 'aria-hidden': 'true' } }, [knob]);
+  const lookHint = el('div', { class: 'lc-card lc-fly-look', text: said.look, attrs: { 'data-ui': 'fly-look' } });
+  const layer = el('div', { class: 'lc-fly', attrs: { 'data-ui': 'fly-layer', hidden: '' } }, touch ? [stick, lookHint, land] : [hint]);
 
   const solid = (): SolidMap => {
     const shape = host.shape();
@@ -157,6 +168,10 @@ export function createFly(host: FlyHost): FlyMode {
     const r = view.canvas.getBoundingClientRect();
     return { w: Math.max(1, r.width || view.canvas.clientWidth || window.innerWidth), h: Math.max(1, r.height || view.canvas.clientHeight || window.innerHeight) };
   };
+  const lens = (): number => {
+    const { w, h } = size();
+    return flyFov(w / h);
+  };
   const matching = (cam: CameraPose, f: number): EyePose => {
     const { w, h } = size();
     return eyeMatchingOrbit(cam, f, w, h);
@@ -169,7 +184,8 @@ export function createFly(host: FlyHost): FlyMode {
    */
   const chooseFov = (cam: CameraPose): number => {
     const m = solid();
-    for (const f of [FLY_FOV, 50, 40, 30, 22, 16, 11, 8]) {
+    const wide = lens();
+    for (const f of [...(wide > FLY_FOV ? [wide] : []), FLY_FOV, 50, 40, 30, 22, 16, 11, 8]) {
       const e = matching(cam, f);
       const far = matching(cam, f * 0.5).eye;
       // Only the stretch below the top of the town can meet anything.
@@ -194,6 +210,7 @@ export function createFly(host: FlyHost): FlyMode {
 
   // ── the cursor ─────────────────────────────────────────────────────────
   const lock = (): void => {
+    if (touch) return;
     try {
       const p = layer.requestPointerLock() as unknown as Promise<void> | undefined;
       // Refused (no user gesture, an embedded page, a headless browser): fly on, looking by plain mouse movement.
@@ -223,10 +240,71 @@ export function createFly(host: FlyHost): FlyMode {
     addLook(lookSum, dx, dy);
   };
   layer.addEventListener('mousemove', (e) => {
+    if (touch) return;
     // With the cursor captured every movement counts; without it, only while it is over the town.
     look(e.movementX, e.movementY);
   });
+  // ── thumbs ─────────────────────────────────────────────────────────────
+  const thumbs = createThumbs();
+  /** Draws the stick where it is held, or at rest at the bottom left. */
+  const showStick = (): void => {
+    const { base, thumb } = thumbs;
+    stick.classList.toggle('lc-fly-held', base !== null);
+    if (!base || !thumb) {
+      stick.style.translate = knob.style.translate = '';
+      return;
+    }
+    stick.style.translate = `${base.x - stick.offsetLeft - stick.offsetWidth / 2}px ${base.y - stick.offsetTop - stick.offsetHeight / 2}px`;
+    knob.style.translate = `${thumb.x - base.x}px ${thumb.y - base.y}px`;
+  };
+  const letGo = (): void => {
+    thumbs.reset();
+    lookSum.dx = lookSum.dy = 0;
+    showStick();
+  };
+  if (touch) {
+    const at = (e: PointerEvent): { x: number; y: number; w: number; h: number } => {
+      const r = layer.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height };
+    };
+    layer.addEventListener('pointerdown', (e) => {
+      if (land.contains(e.target as Node)) return;
+      const p = at(e);
+      if (!thumbs.down(e.pointerId, p.x, p.y, p.w, p.h)) return;
+      try {
+        layer.setPointerCapture(e.pointerId);
+      } catch {
+        // The finger is already gone; its end comes as a cancel.
+      }
+      showStick();
+    });
+    layer.addEventListener('pointermove', (e) => {
+      const p = at(e);
+      const by = thumbs.move(e.pointerId, p.x, p.y);
+      if (by && flight && phase === 'flying') {
+        addDrag(lookSum, by.dx, by.dy);
+        lookHint.hidden = true;
+      }
+      showStick();
+    });
+    for (const end of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+      layer.addEventListener(end, (e) => {
+        thumbs.up(e.pointerId);
+        showStick();
+      });
+    }
+    // iOS: no text loupe, and no swipe back to the last page from the edge the stick is near.
+    layer.addEventListener(
+      'touchstart',
+      (e) => {
+        if (!land.contains(e.target as Node)) e.preventDefault();
+      },
+      { passive: false },
+    );
+    land.addEventListener('click', () => api.exit());
+  }
   layer.addEventListener('pointerdown', (e) => {
+    if (touch) return;
     e.preventDefault();
     // Clicking the town while flying builds nothing; it takes the cursor back if it was let go.
     if (!locked && phase === 'flying') lock();
@@ -263,16 +341,23 @@ export function createFly(host: FlyHost): FlyMode {
   const onKeyUp = (e: KeyboardEvent): void => {
     keys.delete(e.code);
   };
-  const clearKeys = (): void => keys.clear();
+  const clearKeys = (): void => {
+    keys.clear();
+    letGo();
+  };
+  const onHide = (): void => {
+    if (document.hidden) clearKeys();
+  };
   window.addEventListener('keydown', onKey, true);
   window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('blur', clearKeys);
+  document.addEventListener('visibilitychange', onHide);
 
   const input = (): { forward: number; strafe: number; rise: number } => {
     const k = (c: string): number => (keys.has(c) ? 1 : 0);
     return {
-      forward: k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown'),
-      strafe: k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft'),
+      forward: k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown') + thumbs.stick.y,
+      strafe: k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft') + thumbs.stick.x,
       rise: k('Space') - k('ShiftLeft') - k('ShiftRight'),
     };
   };
@@ -296,7 +381,7 @@ export function createFly(host: FlyHost): FlyMode {
     if (from) view.setCamera(from);
     flight = null;
     out = null;
-    keys.clear();
+    clearKeys();
     if (locked && document.pointerLockElement === layer) {
       locked = false;
       document.exitPointerLock();
@@ -313,9 +398,8 @@ export function createFly(host: FlyHost): FlyMode {
     get phase() {
       return phase;
     },
-    available,
     enter() {
-      if (!available || phase !== 'off') return false;
+      if (phase !== 'off') return false;
       track('fly_started');
       // The camera as drawn: an ease still under way is finished first.
       from = view.getCamera();
@@ -324,7 +408,7 @@ export function createFly(host: FlyHost): FlyMode {
       endFov = chooseFov(from);
       fov = endFov;
       t = 0;
-      keys.clear();
+      clearKeys();
       setPhase('in');
       show(matching(from, FLAT_FOV));
       lock();
@@ -344,10 +428,10 @@ export function createFly(host: FlyHost): FlyMode {
         const path = planPath(solid(), now.eye as Vec3, end.eye as Vec3, now.yaw, end.yaw);
         const len = path.reduce((s, p, i) => (i === 0 ? 0 : s + Math.hypot(p[0] - path[i - 1]![0], p[1] - path[i - 1]![1], p[2] - path[i - 1]![2])), 0);
         const turn = Math.abs(wrap(end.yaw - now.yaw)) + Math.abs(end.pitch - now.pitch);
-        out = { path, yaw: now.yaw, pitch: now.pitch, fov: now.fov, share: len > 1e-3 || turn > 0.1 ? 0.6 : 0 };
+        out = { path, yaw: now.yaw, pitch: now.pitch, fov: now.fov, share: len > 1e-3 || turn > 0.1 || Math.abs(now.fov - endFov) > 0.1 ? 0.6 : 0 };
         t = 0;
       }
-      keys.clear();
+      clearKeys();
       setPhase('out');
       if (locked && document.pointerLockElement === layer) {
         locked = false;
@@ -379,6 +463,8 @@ export function createFly(host: FlyHost): FlyMode {
         // frame, unsmoothed), then the flight and its collisions over this frame's time, then the eye.
         applyLook(flight, lookSum);
         stepFlight(solid(), flight, input(), dt);
+        // A phone has no room for a narrow lens (a flight begun zoomed in), and may be turned over.
+        if (touch) fov += (lens() - fov) * (1 - Math.exp(-LENS_RATE * Math.min(dt, 0.1)));
         show({ eye: flight.eye, yaw: flight.yaw, pitch: flight.pitch, fov });
         return;
       }
@@ -428,14 +514,30 @@ export function createFly(host: FlyHost): FlyMode {
       window.removeEventListener('keydown', onKey, true);
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', clearKeys);
+      document.removeEventListener('visibilitychange', onHide);
+      disposed = true;
       layer.remove();
     },
   };
-  button?.addEventListener('click', () => api.enter());
   // The eye's shaders and target are made while the page is idle, not on the first take-off (a frame
   // of about 65 ms at a pixel ratio of 2 otherwise: a visible stall as the glide begins).
-  if (available && view.prepareEye) {
-    const prepare = (): void => view.prepareEye?.();
+  // A phone makes them on the first tap instead: its page start is the lighter, and few fly.
+  let preparing = false;
+  let disposed = false;
+  button.addEventListener('click', () => {
+    if (!touch || !view.prepareEye) return void api.enter();
+    if (preparing) return;
+    preparing = true;
+    button.classList.add('lc-busy');
+    const ready = view.prepareEye();
+    void Promise.race([ready, new Promise((done) => setTimeout(done, PREPARE_LONGEST))]).then(() => {
+      preparing = false;
+      button.classList.remove('lc-busy');
+      if (!disposed) api.enter();
+    });
+  });
+  if (!touch && view.prepareEye) {
+    const prepare = (): void => void view.prepareEye?.();
     const idle = (globalThis as { requestIdleCallback?: (fn: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
     if (idle) idle(prepare, { timeout: 4000 });
     else setTimeout(prepare, 1500);

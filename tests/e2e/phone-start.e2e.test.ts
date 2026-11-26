@@ -31,7 +31,7 @@ describe('a phone, first visit', () => {
   test.each(PHONES)('$width x $height: few things, none over another, all on the screen', async (size) => {
     const { page, errors } = await open(size);
     for (const ui of ['time', 'season', 'weather', 'undo', 'redo', 'guide-button', 'banner']) expect(await on(page, ui), ui).toBe(false);
-    for (const ui of ['menu-button', 'sky', 'welcome']) expect(await on(page, ui), ui).toBe(true);
+    for (const ui of ['menu-button', 'sky', 'fly', 'welcome']) expect(await on(page, ui), ui).toBe(true);
     expect(await page.locator('.lc-stats').isVisible()).toBe(false);
     const boxes = await page.evaluate(() =>
       ['.lc-corner-left', '.lc-corner-right', '[data-ui="welcome"]', '.lc-tabs'].map((q) => {
@@ -66,8 +66,10 @@ describe('a phone, first visit', () => {
     await page.tap('[data-ui="welcome-empty"]');
     await page.tap('[data-ui="sky"]');
     for (const ui of ['time', 'season', 'weather']) expect(await on(page, ui), ui).toBe(true);
+    expect(await on(page, 'fly')).toBe(false);
     await page.tap('[data-ui="sky"]');
     expect(await on(page, 'time')).toBe(false);
+    expect(await on(page, 'fly')).toBe(true);
     await page.tap('[data-ui="menu-button"]');
     expect(await page.textContent('[data-menu="stats"]')).toContain('off');
     await page.locator('[data-menu="stats"]').scrollIntoViewIfNeeded();

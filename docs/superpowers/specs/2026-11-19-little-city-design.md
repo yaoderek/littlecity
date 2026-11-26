@@ -393,7 +393,7 @@ targets `(x, 0, z)`.
 | Set the held piece's length (see "Held length") | scroll over the island, or the − / + stepper | the − / + stepper |
 | Undo / redo | ⌘Z / ⇧⌘Z or buttons | buttons |
 | Pick tool | keys 1–9, 0 | tap tray |
-| Fly (see "Fly mode") | F or the wings button | not yet |
+| Fly (see "Fly mode") | F or the wings button | the wings button |
 | Close what is open; with nothing open, back to the whole island | Escape | — |
 
 **Held length** (Derek's request, 2026-11-19). Pieces that usually come in
@@ -553,11 +553,15 @@ the town Minecraft style from wherever you are looking, and come back.
   nothing open it glides (0.8 s) to the whole-island view a new island opens
   on. The piece in hand stays in hand (it used to put it down; clicking the
   selected piece again still does).
-- **Desktop only for now.** On a touch screen there is no wings button and F
-  does nothing.
+- **Touch** (Derek, 2026-11-24; `2026-11-24-fly-on-touch-design.md`). The
+  wings stand beside the sky button. A thumb low on the left holds a stick
+  that comes to where it lands, a drag anywhere else looks, Land (top left)
+  glides back. No up, down or speed. At least 50° across on an upright
+  screen. The eye's shaders are made on the first tap, not at page start.
 - **Code.** `src/ui/fly.ts` (input, the glides, the DOM, test hooks),
   `src/fly/` (pure: `solid.ts` what is in the way, `flight.ts` the flying,
-  `glide.ts` the clear way out), `src/render/eyecam.ts` and the PERSP
+  `glide.ts` the clear way out, `thumbs.ts` who holds the stick and who
+  looks, `lens.ts` the field of view), `src/render/eyecam.ts` and the PERSP
   variants of the renderer's materials (the flying eye: reversed float
   depth, the paper sky, line weights by distance). Stills and frame times:
   `node src/fly/testing/look.mjs`.
