@@ -2040,3 +2040,26 @@ gradient and feathered edges, a clean cone, no black ink in the effect,
 the scene's lines lifted under the light, the phone's cheap form to
 look good too; cost unchanged. From here on no attribution lines in
 commit messages. Still on a local preview; nothing live.
+
+**UFO round 5 (the beam's look): on the local preview, NOT live,
+waiting for Derek** (2026-11-25 evening). Agent's commit `9f74edf`
+(`swarm/ragdoll`): the beam is one camera-facing trapezoid painted in
+the tractor branch of `src/render/shaders/surface.ts` as a pale
+turquoise wash with the paper's grain, a gradient down its length,
+feathered wavering edges, soft rings and glints painted inside it; the
+separate band, rim and sparkle meshes are gone (the sparkles were the
+black-outlined diamonds); the pool a soft glow; 9 handles a saucer
+(was 12); the overlay pass already draws after the composite, so the
+scene's ink under the light is tinted pale. Preview branch
+`preview/ufo-fixes` at `dd7524f` (worktree `preview-ufo`), merged with
+the working branch at `13add6e` (languages, a tip jar, fly mode on
+touch); the orchestrator resolved the conflict in `src/ui/mischief.ts`
+(kept `t()` and the UFO's new behaviour) and removed "Three at most at
+once." and the dead "three saucers are about already" line from the
+English and all six locale files. Built without the analytics key,
+served at :5180. Gate there: 2,540 passed, 3 timed out at 200 s with
+the machine at a load of 35 (other sessions' test runs), all in
+`src/life/raid/raid.test.ts`; that file passes alone (12 tests, 331 s:
+it is slow even alone and worth looking at). Known weak: the pool is a
+flat disc (hidden under raised edges on steps); the beam is gentle by
+day.
