@@ -20,7 +20,7 @@
 // festival|<year 0..1> and ?weather=auto|clear|cloudy|rain|storm|fog|wind|snow hold them (a scenario
 // can name them too), and &settle=1 brings the weather in at once (settled snow included).
 //
-// The words are in the player's language (src/i18n): ?lang=en|zh|es|fr|pt|ja|ko shows one without remembering it.
+// The words are in the player's language (src/i18n): ?lang=en|zh|es|fr|pt|ja|ko|de|tr shows one without remembering it.
 //
 // window.__lc is the debug handle browser tests and the console use.
 
@@ -75,7 +75,9 @@ const newSeed = (): number => hash(Date.now() | 0, 'island', Math.floor(Math.ran
 
 // ── which language (src/i18n) ────────────────────────────────────────────
 // Before anything says a word: ?lang= (a preview), the player's choice in the menu, the browser's languages.
-await loadLanguage(pickLang({ param: new URLSearchParams(location.search).get('lang'), chosen: storage()?.getItem(LANG_KEY), browser: navigator.languages ?? [navigator.language] }));
+await loadLanguage(pickLang({ param: new URLSearchParams(location.search).get('lang'), chosen: storage()?.getItem(LANG_KEY), browser: navigator.languages ?? [navigator.language], path: location.pathname }));
+// The tab's name in the player's language (a link shared in another opens with that language's title).
+document.title = t('Little City: A hand-drawn city builder in your browser');
 
 // ── which town ───────────────────────────────────────────────────────────
 const params = new URLSearchParams(location.search);
