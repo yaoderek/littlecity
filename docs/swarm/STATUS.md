@@ -2093,3 +2093,13 @@ skipped, none timed out. Not re-run on `ab28224` alone. Also from
 Derek: the castle's garrison should fight raiders and can repel one
 raid → raid agent, same round as landing where clicked and spamming
 (local only, needs his sign-off).
+
+**Derek, 2026-11-25 late: two fixes.** "the orchards in winter/when
+theyre destroyed still have ladders that are upright resting on
+nothing" → agent on `fix/orchard-ladders` (lean on the trunk so it
+holds in winter; lie fallen beside a stump, no picker climbs it).
+"the fishing appearance looks chopped and the line doesnt go into the
+water" → agent on `fix/fishing-line` (the line ends at the fisher's
+feet, in mid-air above the sea; reach the surface with a float; find
+what reads as chopped). Both local only, one preview for his sign-off
+together with nothing else unless the raid round is ready.
