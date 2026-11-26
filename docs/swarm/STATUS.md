@@ -1953,3 +1953,49 @@ returning the person (he chose that over them walking home or being
 gone). The agent was told to put the return back and apply the same
 fixes to it (clear of buildings, turquoise, no resources left behind).
 Running: the UFO's agent (round 3: the phone slowdown first).
+
+**UFO round 3: on a local preview, NOT live, waiting for Derek**
+(2026-11-25). Agent's work at `dc160b3` (`swarm/ragdoll`), merged with
+the working branch (`207b7a5`) on branch `preview/ufo-fixes` in the
+worktree `.claude/worktrees/preview-ufo` (one conflict in
+`src/render/index.ts`: the new haze pool kept, the agent's `__lcMovers`
+debug handle added). Built without the analytics key and served at
+http://127.0.0.1:5180/ and http://192.168.68.60:5180/ (a background
+task of the orchestrator's session; it stops after two hours). Gate on
+the preview: 2,498 passed, 12 skipped, clean.
+- **The phone slowdown's cause is NOT confirmed.** The agent could not
+  reproduce it on this Mac (CPU throttling slows only the script; the
+  M5's graphics are about ten times a phone's; software drawing was
+  unusable). Removed on reasoning, not proof: every saucer mesh was
+  built in the frame of the first click (5.3 ms here, more on a phone;
+  now pre-built a frame at a time); each saucer left 8,300 vertices in
+  the movers' pool until it compacted at 40 % unused (now 5,200); the
+  light's spill covered a radius of 3 cells at 3× (now 1.6); on a
+  phone-sized screen or below full-resolution ink the beam is cone and
+  pool only. Probe: `src/life/testing/ufo-phone.mjs`. Separately,
+  another session shipped `e33edcd` (the governor undoes a passing
+  stall in one step), which bears on "pixelation persists".
+- Goes to the click and takes only someone within 4 cells; cruises
+  above the island's tallest thing and comes straight down (tested
+  against the solid map and trees); turquoise (#2fd3cf); the return
+  visit kept; no limit on saucers (they stack and wait for each other).
+Deploy only after Derek says yes on the preview, and only after
+checking what is live at that moment.
+
+**Derek on the UFO preview (2026-11-25):** (1) a walking person beamed
+up sometimes glitches and flies to the side; (2) the 4-cell search
+radius is far too small: it should home on the nearest person, and
+"nearby" only meant the abduction should be in the camera's view. →
+the UFO's agent, round 4: reproduce and fix the sideways lift (the
+saucer to hover right over its catch, a straight beam); take the
+nearest person to the click among those on screen, with no radius. He
+said nothing yet about phone performance. Still on a local preview;
+nothing live.
+
+**Derek, later the same day:** performance on the UFO preview "is
+fine" (his phone; the cause of the earlier slowdown was never proven:
+it went with the round 3 changes and/or the other session's governor
+fix `e33edcd`). Two more for round 4: when it finds nobody the saucer
+must not sit on the ground (a minimum hover height everywhere); sailors
+on a ship's deck can be abducted. Both sent to the agent. Still on a
+local preview; nothing live.
